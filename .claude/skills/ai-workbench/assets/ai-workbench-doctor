@@ -147,6 +147,46 @@ for p in mattpocock-skills daily.dev ponytail caveman humanizer; do
     fi
 done
 
+section "T3 Code (optional)"
+if has t3; then
+    ok "t3" "$(t3 --version 2>/dev/null | head -1)"
+    if systemctl --user is-active --quiet t3code.service 2>/dev/null; then
+        ok "t3code.service" "active"
+    else
+        miss "t3code.service" "not running — run: t3 service status"
+    fi
+    if grep -qs 'T3CODE_TELEMETRY_ENABLED=false' ~/.config/systemd/user/t3code.service.d/*.conf; then
+        ok "T3 telemetry" "off (systemd drop-in)"
+    else
+        miss "T3 telemetry" "no T3CODE_TELEMETRY_ENABLED=false drop-in"
+    fi
+    # Expected bind: the tailnet IP when tailscale is up, else loopback.
+    want_host=$(tailscale ip -4 2>/dev/null | head -1); want_host=${want_host:-127.0.0.1}
+    t3_host=$(python3 -c "import json; print(json.load(open('$HOME/.t3/userdata/server-runtime.json'))['host'])" 2>/dev/null)
+    if [ "$t3_host" = "$want_host" ]; then
+        ok "T3 bind address" "$t3_host"
+    else
+        miss "T3 bind address" "bound to '${t3_host:-unknown}', expected $want_host"
+    fi
+    t3_default=$(python3 -c "import json; print(json.load(open('$HOME/.t3/userdata/settings.json'))['defaultModelSelection']['instanceId'])" 2>/dev/null)
+    if [ "$t3_default" = "claudeAgent" ]; then
+        ok "T3 default provider" "Claude"
+    else
+        miss "T3 default provider" "'${t3_default:-unset}' — pick a Claude model as default in Settings"
+    fi
+    t3_projects=$(python3 -c "
+import sqlite3
+c = sqlite3.connect('file:$HOME/.t3/userdata/state.sqlite?mode=ro', uri=True)
+print(c.execute('select count(*) from projection_projects where deleted_at is null').fetchone()[0])" 2>/dev/null)
+    if [ "${t3_projects:-0}" -gt 0 ]; then
+        ok "T3 projects" "$t3_projects added"
+    else
+        miss "T3 projects" "none — run: t3 project add <path>"
+    fi
+else
+    miss "t3" "not installed — optional, see SKILL.md"
+fi
+
 echo ""
 echo -e "${purple}└────────────────────────────────────────────────────────${reset}"
 echo -e "${grey}${ok_count}/${total_count} checks passed${reset}"

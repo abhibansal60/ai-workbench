@@ -1,6 +1,6 @@
 ---
 name: ai-workbench
-description: Sets up a matrix-green / cyber-purple "AI Workbench" developer environment on Linux — Starship prompt, a correctly-metriced Nerd Font, a matching 16-color terminal palette, a Claude Code status line, modern CLI tools (eza, bat, fzf, zoxide), git delta, zellij, btop, and bash aliases with a `dh` help command. Use when the user asks to set up, theme, or customize their terminal/shell/dev environment on Linux, or wants an "AI Workbench" or similarly-themed dev machine.
+description: Sets up a matrix-green / cyber-purple "AI Workbench" developer environment on Linux — Starship prompt, a correctly-metriced Nerd Font, a matching 16-color terminal palette, a Claude Code status line, modern CLI tools (eza, bat, fzf, zoxide), git delta, zellij, btop, and bash aliases with a `dh` help command, plus optional Claude Code plugins and T3 Code (a phone-friendly web UI for Claude sessions). Use when the user asks to set up, theme, or customize their terminal/shell/dev environment on Linux, or wants an "AI Workbench" or similarly-themed dev machine.
 ---
 
 # AI Workbench
@@ -40,7 +40,7 @@ uname -s                      # must be Linux
 uname -m                      # x86_64 / aarch64 / etc. — determines which release asset to fetch
 echo "$SHELL"                 # must be bash (or /bin/bash)
 sudo -n true 2>&1             # passwordless sudo available? (informational only — never rely on it)
-command -v starship eza bat fzf zoxide delta zellij btop code 2>&1  # what's already installed
+command -v starship eza bat fzf zoxide delta zellij btop code t3 tailscale 2>&1  # what's already installed
 ```
 
 **Terminal emulator detection** (determines whether the palette/font steps in Step 2
@@ -83,6 +83,8 @@ Use `AskUserQuestion` (multiSelect) with one line per component, e.g.:
 - **Claude Code plugins** — optional, pick any subset (see **Claude Code plugins**
   below for what each one does): `mattpocock-skills`, `daily.dev`, `ponytail`,
   `caveman`, `humanizer`
+- **T3 Code** — optional: a self-hosted web/mobile UI (t3.codes) that runs Claude Code
+  sessions on this box as a background service, so you can drive them from a phone
 
 `ai-workbench-doctor` (see its own section near the end of Step 2) is **not** one of
 these choices — it's installed unconditionally at the end, since it's the tool for
@@ -445,6 +447,83 @@ confirms it resolved correctly.
 
 To remove one later: `claude plugin uninstall <plugin-name>`.
 
+### T3 Code (optional)
+
+[T3 Code](https://t3.codes) (`pingdotgg/t3code`) is a web and mobile UI for coding
+agents. It runs the real `claude` binary on this box, with your `CLAUDE.md`, hooks and
+skills, and lets a phone start and follow sessions. Upstream docs:
+`github.com/pingdotgg/t3code/tree/main/docs/user`.
+
+It installs to `~/.local/bin/t3` and `~/.t3`, with no sudo. **Never sign in to
+anything for it**: skip `t3 connect` (T3's own cloud relay) and every provider
+sign-in button. T3 reuses the `claude` (and `codex`) CLI logins that already exist on
+the box. If `claude` isn't logged in, tell the user to run `claude auth login`
+themselves.
+
+Ask before each piece below. Each one changes something that outlives the session.
+
+1. **Install.** Download the installer and read it before running it. It should
+   only fetch a GitHub release, check its sha256, unpack it under
+   `~/.t3/runtime/versions/` and link `~/.local/bin/t3`:
+   ```bash
+   curl -fsSL https://t3.codes/install.sh -o /tmp/t3-install.sh
+   less /tmp/t3-install.sh        # read it; stop if it does anything else
+   sh /tmp/t3-install.sh
+   t3 --version
+   ```
+2. **Background service.** This writes a systemd user unit
+   (`~/.config/systemd/user/t3code.service`) and enables lingering so T3 survives
+   logout. If lingering needs root, T3 prints a `sudo loginctl enable-linger` command;
+   hand it to the user, don't run it.
+   ```bash
+   t3 service install
+   t3 service status
+   ```
+3. **Telemetry off and bind address**, as systemd drop-ins. Don't edit the unit
+   itself, because `t3 update` and `t3 service install` rewrite it. Bind to the
+   tailnet IP when `tailscale ip -4` returns one, so the phone can reach T3 over the
+   tailnet. Otherwise use `127.0.0.1`. Never bind to `0.0.0.0`.
+   ```bash
+   d=~/.config/systemd/user/t3code.service.d
+   mkdir -p "$d"
+   ls "$d"                        # read any existing drop-ins before writing
+   printf '[Service]\nEnvironment=T3CODE_TELEMETRY_ENABLED=false\n' > "$d/telemetry.conf"
+   host=$(tailscale ip -4 2>/dev/null | head -1); host=${host:-127.0.0.1}
+   printf '[Service]\nEnvironment=T3CODE_HOST=%s\n' "$host" > "$d/tailnet.conf"
+   systemctl --user daemon-reload && systemctl --user restart t3code.service
+   cat ~/.t3/userdata/server-runtime.json   # "host" must match, port is 3773
+   ```
+   This is plain HTTP inside the tailnet. If Tailscale Serve (HTTPS) is enabled on
+   the tailnet, `t3 pair --tailscale` publishes T3 over HTTPS instead.
+4. **Projects.** Add each repo the user works in. Ask which ones; for a `~/code`
+   layout, offer all of its git repos:
+   ```bash
+   for r in ~/code/*/.git; do t3 project add "${r%/.git}"; done
+   ```
+5. **Claude as default provider.** Open T3 in a browser (the `origin` in
+   `server-runtime.json`). In **Settings**, have the user pick a Claude model as
+   the default. The user chooses the model, not you. This writes
+   `defaultModelSelection.instanceId = "claudeAgent"` to `~/.t3/userdata/settings.json`.
+   Turn off providers whose CLI isn't installed, or that T3 flags as an unsupported
+   version, in **Settings → Providers**.
+6. **Pair the phone.** Install the T3 Code app (App Store or Google Play) and join
+   the phone to the same tailnet. Then mint a short-lived link and show the QR code
+   and URL:
+   ```bash
+   t3 pair --label phone --ttl 30m
+   ```
+   Treat the pairing URL like a password. Don't paste it into commits, logs or
+   screenshots.
+
+Verify: `t3 --version`, `t3 service status`, the `host` in `server-runtime.json`, and
+`ai-workbench-doctor`'s T3 section. Update later with `t3 update`. Remove with
+`t3 uninstall` (projects and threads in `~/.t3/userdata` are kept).
+
+**Known gaps.** The Claude Code status line and dev mods don't render in T3; they are
+terminal-only. A hook that depends on status-line data (for example `usage-stop.sh`
+reading cached rate-limit numbers) only stays fresh while a terminal Claude session
+runs alongside T3.
+
 ### `ai-workbench-doctor` (always installed, regardless of Step 1 selections)
 
 Copy `assets/ai-workbench-doctor` to `~/.local/bin/ai-workbench-doctor` and `chmod +x` it.
@@ -515,6 +594,9 @@ Tell the user plainly:
   `gh auth login --with-token` and nowhere else — not a file, not a log, not an asset
   template, not this skill's own repo. Tell the user plainly that a token pasted into
   chat lives in that conversation's history, so they can decide whether to rotate it.
+- **T3 Code shows no status line or mods.** T3 drives the real `claude` binary through
+  the Agent SDK, so `CLAUDE.md`, hooks and skills load, but TUI-only features don't
+  render. See **Known gaps** in the T3 Code section.
 - **`--version` output isn't always plain text.** Some tools (`btop`, some `delta`
   builds) embed their own ANSI color codes even when piped. If you're composing that
   output into another colored line (like `ai-workbench-doctor` does), strip escape codes

@@ -27,6 +27,7 @@ identically whether or not you have root on the machine.
 | bash aliases | Git/Docker/Python/Node/nav shortcuts + a `dh` command that prints all of them |
 | GitHub CLI | Installed and ready for you to run `gh auth login` (this one step stays manual, on purpose) |
 | Claude Code plugins | Optional: `mattpocock-skills`, `daily.dev`, `ponytail`, `caveman`, `humanizer` — pick any subset |
+| T3 Code | Optional: [t3.codes](https://t3.codes) as a background service on your tailnet, so your phone can run Claude sessions on this box. Telemetry off, Claude as default, no extra sign-ins |
 | `ai-workbench-doctor` | Always installed — a `doctor` command that reports what's actually configured vs missing |
 
 ## Screenshot
@@ -35,6 +36,10 @@ identically whether or not you have root on the machine.
 
 Themed status line: directory, git branch, model, context-usage bar, and the
 Claude.ai 5-hour rate-limit bar — all in the matrix-green / cyber-purple palette.
+
+![T3 Code running a Claude session in home-list](docs/screenshots/t3-code.jpg)
+
+T3 Code driving Claude Code on the same box, with the global `CLAUDE.md` and skills loaded.
 
 ## Using it
 
