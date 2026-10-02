@@ -1,5 +1,25 @@
 # AI Workbench
 
+## Start here: paste this to your agent
+
+On a fresh Ubuntu machine, first run `sudo apt install -y curl git` and install
+Claude Code (`curl -fsSL https://claude.ai/install.sh | bash`, then run `claude` once
+to sign in). Then paste this into Claude Code, or into any coding agent:
+
+```text
+Set up this Linux machine with AI Workbench (https://github.com/abhibansal60/ai-workbench).
+1. Clone it to ~/code/ai-workbench, or run `git pull` there if it already exists.
+2. Read ~/code/ai-workbench/.claude/skills/ai-workbench/SKILL.md in full and follow it
+   as the runbook. Start with Step 0: detect my environment with read-only commands and
+   sort out the prerequisites.
+3. Ask me which components I want before you install anything, and install only those.
+   Read every existing dotfile before you change it.
+4. Never run sudo yourself. When a step needs root, give me the exact command and wait.
+5. Verify each step as the runbook says. Finish by running ai-workbench-doctor and tell
+   me what passed, what needs a new terminal, and what is left for me to do (for example
+   gh auth login, or pairing my phone with T3 Code).
+```
+
 A Claude Code **skill** that builds a cohesive matrix-green / cyber-purple developer
 environment on Linux — one shared color palette across your prompt, terminal, editor,
 system monitor, and diffs, instead of eleven mismatched default themes.
@@ -19,12 +39,13 @@ identically whether or not you have root on the machine.
 | Starship | Two-line prompt: directory, git branch/status, language runtimes, conda, cmd duration |
 | Nerd Font | Correctly-metriced (readable) icon font — the naive "Mono" patch variant is broken in VTE terminals, this skill knows to avoid it |
 | Terminal palette | Full 16-color ANSI theme (Ptyxis: automated; other terminals: palette file + manual pointer) |
-| Claude Code status line | Themed status line inside Claude Code itself |
+| Claude Code status line | Themed status line inside Claude Code: context, 5h and 7-day limit bars, session token totals |
+| Usage hard stop | Optional: a hook that stops Claude at 75% of the 5-hour limit, so one long run can't use up the window |
 | eza / bat / fzf / zoxide | Modern `ls`/`cat`/history-search/`cd` replacements |
 | git delta | Side-by-side, syntax-highlighted diffs in the same palette |
 | zellij | Themed terminal multiplexer |
 | btop | Themed system monitor |
-| bash aliases | Git/Docker/Python/Node/nav shortcuts + a `dh` command that prints all of them |
+| bash aliases | Claude Code, Codex, Git, Docker, Python, Node and navigation shortcuts, plus a `dh` command that prints all of them |
 | GitHub CLI | Installed and ready for you to run `gh auth login` (this one step stays manual, on purpose) |
 | Claude Code plugins | Optional: `mattpocock-skills`, `daily.dev`, `ponytail`, `caveman`, `humanizer` — pick any subset |
 | T3 Code | Optional: [t3.codes](https://t3.codes) as a background service on your tailnet, so your phone can run Claude sessions on this box. Telemetry off, Claude as default, no extra sign-ins |
@@ -43,17 +64,13 @@ T3 Code driving Claude Code on the same box, with the global `CLAUDE.md` and ski
 
 ## Using it
 
-This is a Claude Code skill, not a shell script — you run it *through* Claude Code so
-it can detect your specific environment (terminal emulator, architecture, what's
-already installed) and ask what you actually want before touching anything.
+Use the **Start here** prompt above. The agent clones the repo, follows
+[`SKILL.md`](.claude/skills/ai-workbench/SKILL.md) as its runbook, asks which pieces you
+want, and verifies each one. Run it again any time: it reads what's already set up and
+only fills the gaps. `doctor` shows the current state.
 
-1. Copy `.claude/skills/ai-workbench/` into your own project's `.claude/skills/`
-   directory (or your global `~/.claude/skills/`).
-2. In Claude Code, ask it to set up the ai-workbench environment (or invoke the skill by
-   name if your setup supports that).
-3. Claude will detect your environment, ask which pieces you want, and walk through
-   the runbook in `SKILL.md` — installing only what you selected, verifying each step,
-   and never overwriting existing dotfile content without asking first.
+To use it only as a Claude Code skill, copy `.claude/skills/ai-workbench/` into
+`~/.claude/skills/` and ask Claude to set up the AI Workbench.
 
 ## Why a skill and not a script
 
@@ -74,6 +91,8 @@ that a fixed script can't safely special-case for every environment.
     ├── starship.toml
     ├── bash_aliases
     ├── statusline.sh
+    ├── statusline-tokens.mjs     # session token totals for the status line
+    ├── usage-stop.sh             # optional 75% usage hard-stop hook
     ├── ai-workbench.theme        # btop
     ├── zellij-config.kdl
     ├── AI-Workbench.palette      # Ptyxis 16-color palette

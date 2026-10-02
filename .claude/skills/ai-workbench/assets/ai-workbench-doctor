@@ -68,7 +68,23 @@ sys.exit(0 if any(k.startswith('$1@') and v for k, v in d.get('enabledPlugins', 
 }
 
 section "Claude Code"
+if has claude; then ok "claude" "$(claude --version 2>/dev/null | head -1)"; else miss "claude" "not on PATH — curl -fsSL https://claude.ai/install.sh | bash"; fi
+if has jq; then ok "jq" "$(jq --version 2>/dev/null) (status line and usage stop need it)"; else miss "jq" "not on PATH — the status line renders blank without it"; fi
 if [ -f ~/.claude/statusline.sh ]; then ok "statusline.sh" "present"; else miss "statusline.sh" "~/.claude/statusline.sh not found"; fi
+if [ -f ~/.claude/statusline-tokens.mjs ] && has node; then
+    ok "session token totals" "statusline-tokens.mjs + node $(node --version 2>/dev/null)"
+else
+    miss "session token totals" "needs node and ~/.claude/statusline-tokens.mjs (segment is skipped)"
+fi
+if [ -f ~/.claude/hooks/usage-stop.sh ]; then
+    if grep -q 'usage-stop.sh' ~/.claude/settings.json 2>/dev/null; then
+        ok "usage hard stop" "PreToolUse hook wired, stops at 75% of the 5h limit"
+    else
+        miss "usage hard stop" "usage-stop.sh present but not wired as a PreToolUse hook"
+    fi
+else
+    miss "usage hard stop" "optional — not installed"
+fi
 if [ -f ~/.claude/settings.json ] && python3 -c "import json,sys; d=json.load(open('$HOME/.claude/settings.json')); sys.exit(0 if 'statusLine' in d else 1)" 2>/dev/null; then
     ok "statusLine config" "wired in ~/.claude/settings.json"
 else

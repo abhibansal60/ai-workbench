@@ -17,6 +17,15 @@ alias ccauto='claude --permission-mode auto'          # start in auto mode
 alias ccyolo='claude --dangerously-skip-permissions'  # bypass all permission checks — trusted/sandboxed dirs only
 
 # ---------------------------------------------------------------------------
+# Codex (matching the Claude Code shortcuts)
+alias cx='codex'
+alias cxc='codex resume --last'
+alias cxr='codex resume'
+alias cxp='codex exec'
+alias cxplan='codex --sandbox read-only --ask-for-approval on-request -c approvals_reviewer="user"'
+alias cxauto='codex --approve-for-me'
+alias cxyolo='codex --dangerously-bypass-approvals-and-sandbox'
+
 # Git
 # ---------------------------------------------------------------------------
 alias g='git'
@@ -152,6 +161,15 @@ devhelp() {
     print_row "ccplan"  "claude --permission-mode plan"
     print_row "ccauto"  "claude --permission-mode auto"
     print_row "ccyolo"  "claude --dangerously-skip-permissions"
+    echo ""
+    echo -e "${cyan}Codex${reset}"
+    print_row "cx" "codex"
+    print_row "cxc" "continue latest session here"
+    print_row "cxr" "session picker"
+    print_row "cxp" "codex exec (one-shot, pipeable)"
+    print_row "cxplan" "read-only session; type /plan for Plan mode"
+    print_row "cxauto" "automatic approval review, workspace sandbox"
+    print_row "cxyolo" "bypass approvals and sandbox (explicit opt-in)"
     echo ""
     echo -e "${cyan}Git${reset}"
     print_row "g"   "git"

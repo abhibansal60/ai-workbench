@@ -10,12 +10,15 @@
 #   error_red    #ff003c  -> either bar, >=90% used (danger)
 #   muted_grey   #5c5c6e  -> separators / low-emphasis text
 #
-# Renders: dir on Ψ branch │ model │ ctx ▓▓▓▓▓░░░░░ 48% │ 5h ▓▓░░░░░░░░ 20%
+# Renders: dir on Ψ branch │ model │ ctx ▓▓▓▓▓░░░░░ 48% │ 5h ▓▓░░░░░░░░ 20% │ 7d ▓░░░░░░░░░ 13% │ in 12.3M 97% cached  out 85k
 #
 # The 5h segment (Claude.ai subscription rate-limit usage) only appears when
 # `.rate_limits.five_hour` is present in the payload — it's omitted entirely
 # for accounts/sessions where Claude Code doesn't report it, rather than
 # showing a broken or zeroed-out bar.
+#
+# Session token totals need node and ~/.claude/statusline-tokens.mjs; without
+# them that segment is skipped.
 #
 # Reads the statusLine JSON payload from stdin (see Claude Code docs).
 
@@ -66,6 +69,18 @@ used_pct=$(printf '%s' "$input" | jq -r '.context_window.used_percentage // empt
 # entirely absent (jq's `// empty` already collapses null-propagation from a
 # missing `.rate_limits` object down to an empty string).
 five_pct=$(printf '%s' "$input" | jq -r '.rate_limits.five_hour.used_percentage // empty')
+week_pct=$(printf '%s' "$input" | jq -r '.rate_limits.seven_day.used_percentage // empty')
+
+# Feed the optional usage hard-stop hook (~/.claude/hooks/usage-stop.sh), which
+# reads "<percent> <epoch>" from this file. Written only when the hook is installed.
+if [ -n "$five_pct" ] && [ -f "$HOME/.claude/hooks/usage-stop.sh" ]; then
+    printf '%s %s\n' "$five_pct" "$(date +%s)" > "$HOME/.claude/usage-5h.txt"
+fi
+
+# ---- session tokens (summed from the transcript; see statusline-tokens.mjs) ---
+transcript=$(printf '%s' "$input" | jq -r '.transcript_path // empty')
+tokens=""
+[ -n "$transcript" ] && tokens=$(node "$HOME/.claude/statusline-tokens.mjs" "$transcript" 2>/dev/null)
 
 # ---- bar widget helpers -------------------------------------------------------
 BAR_WIDTH=10
@@ -126,7 +141,21 @@ if [ -n "$five_pct" ] && [ "$five_pct" != "null" ]; then
     pct_int=$(clamp_pct "$five_pct")
     bar=$(make_bar "$pct_int")
     five_color=$(bar_color "$pct_int" "$C_GREEN")
-    out="${out}${sep}${five_color}5h ${bar} ${pct_int}%${C_RESET}"
+    five_reset=$(printf '%s' "$input" | jq -r '.rate_limits.five_hour.resets_at // empty')
+    reset_txt=""
+    [ -n "$five_reset" ] && reset_txt=" resets $(date -d "@${five_reset%.*}" +%H:%M 2>/dev/null)"
+    out="${out}${sep}${five_color}5h ${bar} ${pct_int}%${reset_txt}${C_RESET}"
+fi
+
+if [ -n "$week_pct" ] && [ "$week_pct" != "null" ]; then
+    pct_int=$(clamp_pct "$week_pct")
+    bar=$(make_bar "$pct_int")
+    week_color=$(bar_color "$pct_int" "$C_GREEN")
+    out="${out}${sep}${week_color}7d ${bar} ${pct_int}%${C_RESET}"
+fi
+
+if [ -n "$tokens" ]; then
+    out="${out}${sep}${C_GREY}${tokens}${C_RESET}"
 fi
 
 printf '%s\n' "$out"

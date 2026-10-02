@@ -1,6 +1,6 @@
 ---
 name: ai-workbench
-description: Sets up a matrix-green / cyber-purple "AI Workbench" developer environment on Linux — Starship prompt, a correctly-metriced Nerd Font, a matching 16-color terminal palette, a Claude Code status line, modern CLI tools (eza, bat, fzf, zoxide), git delta, zellij, btop, and bash aliases with a `dh` help command, plus optional Claude Code plugins and T3 Code (a phone-friendly web UI for Claude sessions). Use when the user asks to set up, theme, or customize their terminal/shell/dev environment on Linux, or wants an "AI Workbench" or similarly-themed dev machine.
+description: Sets up a matrix-green / cyber-purple "AI Workbench" developer environment on Linux — Starship prompt, a correctly-metriced Nerd Font, a matching 16-color terminal palette, a Claude Code status line and optional 75% usage hard stop, modern CLI tools (eza, bat, fzf, zoxide), git delta, zellij, btop, and bash aliases with a `dh` help command, plus optional Claude Code plugins and T3 Code (a phone-friendly web UI for Claude sessions). Use when the user asks to set up, theme, or customize their terminal/shell/dev environment on Linux, or wants an "AI Workbench" or similarly-themed dev machine.
 ---
 
 # AI Workbench
@@ -41,7 +41,30 @@ uname -m                      # x86_64 / aarch64 / etc. — determines which rel
 echo "$SHELL"                 # must be bash (or /bin/bash)
 sudo -n true 2>&1             # passwordless sudo available? (informational only — never rely on it)
 command -v starship eza bat fzf zoxide delta zellij btop code t3 tailscale 2>&1  # what's already installed
+command -v curl git unzip python3 jq node claude 2>&1   # prerequisites, see below
 ```
+
+**Prerequisites.** A fresh Ubuntu desktop can lack `curl` and `git`, and usually lacks
+`jq` and `node`. Handle each before Step 1:
+
+- `curl`, `git`: these need apt, so hand the user `sudo apt install -y curl git` and
+  wait for them to confirm it's done.
+- `unzip`: only the Nerd Font step uses it. Without it, extract with
+  `python3 -m zipfile -e <zip> <dir>`.
+- `jq`: the status line and the usage hard stop parse their JSON with it, and render
+  nothing without it. Install the static binary, no sudo:
+  ```bash
+  a=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+  curl -fsSL "https://github.com/jqlang/jq/releases/latest/download/jq-linux-$a" -o ~/.local/bin/jq
+  chmod +x ~/.local/bin/jq && jq --version
+  ```
+- `node`: optional. Only the status line's session-token segment uses it, and that
+  segment is skipped without it. Mention it; don't install it unasked.
+- `claude`: the status line, plugins and T3 Code all need Claude Code. If it's missing,
+  install it with `curl -fsSL https://claude.ai/install.sh | bash` (user-local, no
+  sudo) and tell the user to run `claude` once to sign in.
+
+This step is done when `command -v curl git jq` prints all three paths.
 
 **Terminal emulator detection** (determines whether the palette/font steps in Step 2
 can be automated or need manual instructions):
@@ -73,7 +96,10 @@ Use `AskUserQuestion` (multiSelect) with one line per component, e.g.:
 - **Starship prompt** — matrix-green/cyber-purple two-line prompt (git, language runtimes, cmd duration)
 - **Nerd Font + terminal font fix** — required for the icons Starship/btop/etc. use
 - **Terminal color palette** — 16-color ANSI theme so `ls`, `man`, `less`, everything matches (Ptyxis only, automated)
-- **Claude Code status line** — themed status line inside Claude Code itself
+- **Claude Code status line** — themed status line inside Claude Code itself: context,
+  5h and 7-day limit bars, session token totals
+- **Usage hard stop** — optional: a hook that stops every Claude tool call once the
+  5-hour subscription limit reaches 75%, so a long run can't burn the whole window
 - **Modern CLI tools** — eza, bat, fzf, zoxide
 - **git delta** — themed side-by-side diffs
 - **zellij** — themed terminal multiplexer
@@ -232,36 +258,66 @@ just not a shared file format).
 Check `~/.claude/settings.json` first — read it, don't overwrite it. If a `statusLine`
 key already exists, ask the user before replacing it.
 
+Needs `jq` (see **Prerequisites**).
+
 ```bash
 cp assets/statusline.sh ~/.claude/statusline.sh
+cp assets/statusline-tokens.mjs ~/.claude/statusline-tokens.mjs
 ```
 
-Renders `dir on branch │ model │ ctx ▓▓▓▓▓░░░░░ 48% │ 5h ▓▓░░░░░░░░ 20%` — block-meter
-bars for context-window usage and, when present, the Claude.ai subscription 5-hour
-rate-limit window. Bars go amber at 70%, red at 90%. The 5h segment only appears when
-`.rate_limits.five_hour` is in the payload — omit it entirely rather than showing a
-zeroed bar when a session doesn't report it.
+Renders `dir on Ψ branch │ model │ ctx ▓▓▓▓▓░░░░░ 48% │ 5h ▓▓░░░░░░░░ 20% resets 14:30 │ 7d ▓░░░░░░░░░ 13% │ in 12.3M 97% cached  out 85k`.
+Bars go amber at 70% and red at 90%. Each segment appears only when its data exists:
+the 5h and 7d bars when the payload has `.rate_limits`, the token totals when `node`
+is installed.
 
-Merge (don't overwrite) the settings file — use a small Python/`jq` snippet that loads
-the existing JSON, sets `statusLine`, and writes it back, preserving every other key:
+Merge (don't overwrite) the settings file, preserving every other key:
 
-```python
-import json
-path = "/home/user/.claude/settings.json"
-with open(path) as f:
-    data = json.load(f)
-data["statusLine"] = {"type": "command", "command": 'bash "$HOME/.claude/statusline.sh"'}
-with open(path, "w") as f:
-    json.dump(data, f, indent=2)
-```
-
-Verify with a mock payload before declaring success — include `rate_limits.five_hour`
-to exercise the 5h bar too:
 ```bash
-echo '{"model":{"display_name":"Claude Sonnet 5"},"workspace":{"current_dir":"'$HOME'"},"context_window":{"used_percentage":34},"rate_limits":{"five_hour":{"used_percentage":20}}}' \
+python3 - <<'EOF'
+import json, os
+path = os.path.expanduser("~/.claude/settings.json")
+data = json.load(open(path)) if os.path.exists(path) else {}
+data["statusLine"] = {"type": "command", "command": 'bash "$HOME/.claude/statusline.sh"', "refreshInterval": 10}
+json.dump(data, open(path, "w"), indent=2)
+EOF
+```
+
+Verify with a mock payload that exercises every bar:
+```bash
+echo '{"model":{"display_name":"Claude Opus 5.5"},"workspace":{"current_dir":"'$HOME'"},"context_window":{"used_percentage":34},"rate_limits":{"five_hour":{"used_percentage":20},"seven_day":{"used_percentage":13}}}' \
   | bash ~/.claude/statusline.sh
 ```
-Confirm colored output actually appears, not an error or blank line.
+Done when the output shows a colored ctx, 5h and 7d bar on one line.
+
+### Usage hard stop (optional)
+
+A `PreToolUse` hook that denies every tool call once the 5-hour limit reaches 75%, and
+tells Claude to stop and report what's done and what's left. The status line writes
+the current percentage to `~/.claude/usage-5h.txt` while the hook is installed, and the
+hook ignores readings older than 10 minutes. So it only works with the status line
+installed and a terminal Claude session running. Override for one stretch with
+`touch ~/.claude/usage-stop-off`.
+
+```bash
+mkdir -p ~/.claude/hooks
+cp assets/usage-stop.sh ~/.claude/hooks/usage-stop.sh
+python3 - <<'EOF'
+import json, os
+path = os.path.expanduser("~/.claude/settings.json")
+data = json.load(open(path)) if os.path.exists(path) else {}
+pre = data.setdefault("hooks", {}).setdefault("PreToolUse", [])
+cmd = 'bash "$HOME/.claude/hooks/usage-stop.sh"'
+if not any(h.get("command") == cmd for g in pre for h in g.get("hooks", [])):
+    pre.append({"matcher": "*", "hooks": [{"type": "command", "command": cmd, "timeout": 5}]})
+json.dump(data, open(path, "w"), indent=2)
+EOF
+```
+
+Verify both paths:
+```bash
+echo "80 $(date +%s)" > ~/.claude/usage-5h.txt && bash ~/.claude/hooks/usage-stop.sh   # prints a deny JSON
+echo "10 $(date +%s)" > ~/.claude/usage-5h.txt && bash ~/.claude/hooks/usage-stop.sh   # prints nothing
+```
 
 ### Modern CLI tools — eza, bat, fzf, zoxide
 
@@ -351,7 +407,7 @@ Optional: alias `top`/`htop` to `btop` in the bash aliases step below.
 
 ### bash aliases + `dh` help command
 
-`assets/bash_aliases` is a complete, ready-to-use file (Claude Code aliases, git,
+`assets/bash_aliases` is a complete, ready-to-use file (Claude Code and Codex aliases, git,
 docker, python/conda, node, navigation, the modern-CLI-tools aliases, zellij, system/
 network, utility functions, and the `devhelp`/`dh` function that prints all of it in
 the ai-workbench palette).
@@ -459,6 +515,11 @@ anything for it**: skip `t3 connect` (T3's own cloud relay) and every provider
 sign-in button. T3 reuses the `claude` (and `codex`) CLI logins that already exist on
 the box. If `claude` isn't logged in, tell the user to run `claude auth login`
 themselves.
+
+Phone access goes over Tailscale. If `tailscale ip -4` prints nothing, Tailscale
+needs root to install, so hand the user
+`curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up` and wait.
+Without it, T3 still works on this machine at `127.0.0.1`.
 
 Ask before each piece below. Each one changes something that outlives the session.
 
