@@ -601,3 +601,8 @@ Tell the user plainly:
   builds) embed their own ANSI color codes even when piped. If you're composing that
   output into another colored line (like `ai-workbench-doctor` does), strip escape codes
   first (`sed -E 's/\x1b\[[0-9;]*m//g'`) or the two color schemes will visibly clash.
+- **Boxes set up as `cyberdeck` fail four doctor checks.** Machines installed before
+  the rename still have `cyberdeck.theme`, `theme "cyberdeck"`, `color_theme =
+  "cyberdeck"` and the `Cyberdeck` Ptyxis palette, so the Ptyxis, zellij, btop theme
+  and btop.conf checks fail. The old files differ from the current assets only in the
+  name, so back them up and re-run the Ptyxis palette, zellij and btop steps.
