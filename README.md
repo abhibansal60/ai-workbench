@@ -48,6 +48,7 @@ identically whether or not you have root on the machine.
 | bash aliases | Claude Code, Codex, Git, Docker, Python, Node and navigation shortcuts, plus a `dh` command that prints all of them |
 | GitHub CLI | Installed and ready for you to run `gh auth login` (this one step stays manual, on purpose) |
 | Claude Code plugins | Optional: `mattpocock-skills`, `daily.dev`, `ponytail`, `caveman`, `humanizer` — pick any subset |
+| Tailscale | Optional hand-off: the skill checks it and gives you the install + `sudo tailscale up` commands (needs root, so it never runs them). Lets your phone reach this box |
 | T3 Code | Optional: [t3.codes](https://t3.codes) as a background service on your tailnet, so your phone can run Claude sessions on this box. Telemetry off, Claude as default, no extra sign-ins |
 | `ai-workbench-doctor` | Always installed — a `doctor` command that reports what's actually configured vs missing |
 

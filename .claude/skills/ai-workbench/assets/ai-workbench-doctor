@@ -163,6 +163,19 @@ for p in mattpocock-skills daily.dev ponytail caveman humanizer; do
     fi
 done
 
+section "Tailscale (optional)"
+if has tailscale; then
+    ok "tailscale" "$(tailscale version 2>/dev/null | head -1)"
+    ts_ip=$(tailscale ip -4 2>/dev/null | head -1)
+    if [ -n "$ts_ip" ]; then
+        ok "tailnet" "up, $ts_ip"
+    else
+        miss "tailnet" "no tailnet IP — run: sudo tailscale up"
+    fi
+else
+    miss "tailscale" "not installed — optional, needs sudo, see SKILL.md"
+fi
+
 section "T3 Code (optional)"
 if has t3; then
     ok "t3" "$(t3 --version 2>/dev/null | head -1)"

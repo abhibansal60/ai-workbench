@@ -55,6 +55,7 @@ command -v curl git unzip python3 jq node claude 2>&1   # prerequisites, see bel
   nothing without it. Install the static binary, no sudo:
   ```bash
   a=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+  mkdir -p ~/.local/bin
   curl -fsSL "https://github.com/jqlang/jq/releases/latest/download/jq-linux-$a" -o ~/.local/bin/jq
   chmod +x ~/.local/bin/jq && jq --version
   ```
@@ -109,6 +110,8 @@ Use `AskUserQuestion` (multiSelect) with one line per component, e.g.:
 - **Claude Code plugins** — optional, pick any subset (see **Claude Code plugins**
   below for what each one does): `mattpocock-skills`, `daily.dev`, `ponytail`,
   `caveman`, `humanizer`
+- **Tailscale** — optional hand-off: private network so a phone can reach this box.
+  Needs root, so the skill checks it and gives you the commands instead of running them
 - **T3 Code** — optional: a self-hosted web/mobile UI (t3.codes) that runs Claude Code
   sessions on this box as a background service, so you can drive them from a phone
 
@@ -503,6 +506,31 @@ confirms it resolved correctly.
 
 To remove one later: `claude plugin uninstall <plugin-name>`.
 
+### Tailscale (optional, hand-off)
+
+Tailscale is the one component here that can't be rootless: `tailscaled` is a system
+daemon and the install and `tailscale up` both need root. So the skill only checks and
+hands off, like `gh auth login`. Never run `sudo`, never run `tailscale up` or log in.
+
+```bash
+command -v tailscale && tailscale version | head -1
+tailscale ip -4          # empty = not installed, stopped or logged out
+tailscale status | head  # the phone should be listed
+```
+
+If it's missing, give the user these to run themselves, then wait:
+
+```
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+```
+
+(Read the install script first if the user wants; it's the official one.) If it's
+installed but `tailscale ip -4` is empty, the fix is `sudo tailscale up` (or
+`sudo systemctl start tailscaled`). Verify: `tailscale ip -4` prints a `100.x` address.
+Install Tailscale on the phone and sign in to the same tailnet there; that is the
+user's step too.
+
 ### T3 Code (optional)
 
 [T3 Code](https://t3.codes) (`pingdotgg/t3code`) is a web and mobile UI for coding
@@ -516,10 +544,8 @@ sign-in button. T3 reuses the `claude` (and `codex`) CLI logins that already exi
 the box. If `claude` isn't logged in, tell the user to run `claude auth login`
 themselves.
 
-Phone access goes over Tailscale. If `tailscale ip -4` prints nothing, Tailscale
-needs root to install, so hand the user
-`curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up` and wait.
-Without it, T3 still works on this machine at `127.0.0.1`.
+Phone access goes over Tailscale (see the **Tailscale** section above). Without it,
+T3 still works on this machine at `127.0.0.1`.
 
 Ask before each piece below. Each one changes something that outlives the session.
 
