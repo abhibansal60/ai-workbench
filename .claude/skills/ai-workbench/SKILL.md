@@ -63,13 +63,14 @@ skill reinstalls those for the new architecture and paths.
 6. **Optionally name the machines.** The user runs these on each one:
    ```bash
    sudo hostnamectl set-hostname <name>
-   sudo sed -i 's/^127\.0\.1\.1.*/127.0.1.1 <name>/' /etc/hosts   # otherwise sudo warns it can't resolve the host
+   sudo sed -i "s/^127\.0\.1\.1.*/$(tailscale ip -4 | head -1) <name>/" /etc/hosts
    sudo tailscale set --hostname=<name>
    ```
-   MagicDNS then makes `ssh <name>` work across the tailnet. For T3, use the full
-   name, `http://<name>.<tailnet>.ts.net:3773` (`tailscale status --json | jq -r
-   .Self.DNSName`). On the machine itself, the short name hits the `127.0.1.1` line in
-   `/etc/hosts`, and T3 only listens on the tailnet IP, so the browser gets "connection refused".
+   The `/etc/hosts` line maps the machine's own name to its tailnet IP. Ubuntu's default
+   `127.0.1.1` line would make `http://<name>:3773` "connection refused" on the machine
+   itself, because T3 listens only on the tailnet IP. Some line must name the host, or
+   `sudo` warns it can't resolve it. The tailnet IP stays fixed for the machine.
+   MagicDNS then makes `ssh <name>` and `http://<name>:3773` work from every device.
 
 After the copy, each machine's `~/.claude` (memory, skills, `CLAUDE.md`) changes on
 its own. Suggest the user treats one machine as the main one.
@@ -740,10 +741,10 @@ Ask before each piece below. Each one changes something that outlives the sessio
 
 7. **Optional: T3 as a desktop app.** A launcher that opens T3 in its own Chrome app
    window, starts at login and sits in the dock. Use an address that reaches T3 *from
-   this machine* and that this machine's Chrome is already paired with (the tailnet IP
-   or full `ts.net` name; the short hostname is refused locally):
+   this machine* and that this machine's Chrome is already paired with (the short name
+   once `/etc/hosts` maps it to the tailnet IP, else the `100.x` IP):
    ```bash
-   url=http://<tailnet-ip>:3773
+   url=http://<name>:3773
    mkdir -p ~/.local/share/icons ~/.local/share/applications ~/.config/autostart
    curl -fsS "$url/apple-touch-icon.png" -o ~/.local/share/icons/t3code.png
    printf '[Desktop Entry]\nType=Application\nName=T3 Code\nExec=google-chrome --app=%s\nIcon=%s\nCategories=Development;\n' \
@@ -766,8 +767,10 @@ runs alongside T3.
 **More than one machine.** Each machine's T3 is a separate server with its own
 threads. A browser or phone paired with machine A sees none of machine B's threads,
 even on the same tailnet. Pair each client with each server (`t3 pair` on the server
-whose threads it should see) and open `http://<machine>.<tailnet>.ts.net:3773`,
-which works from every device, including the machine itself. Start long-running work
+whose threads it should see) and open `http://<machine>:3773`. One client can also
+hold both: **Settings → Connections → Add environment** with the other machine's
+pairing URL lists both machines' threads together, and **Load balancing** (Prefer /
+Manual only, saved per client) picks which machine new threads go to. Start long-running work
 on the machine that stays on. Keep the versions equal (`t3 --version` on each).
 `t3 update` restarts the service, which ends every running session, including the one
 running the update. Run it when no thread is busy.
@@ -946,8 +949,9 @@ Tell the user plainly:
 - **A paired T3 client sees only that server's threads.** Two machines means two T3
   servers. If a thread "doesn't show up", check which machine the client is paired with.
 - **`http://<machine>:3773` is refused on that same machine.** The short name resolves
-  to `127.0.1.1` from `/etc/hosts`; T3 binds only the tailnet IP. Use the full
-  `<machine>.<tailnet>.ts.net` name or the `100.x` IP.
+  to `127.0.1.1` from `/etc/hosts`; T3 binds only the tailnet IP. Point that line at the
+  tailnet IP (see **Moving from another machine**, step 6). Changing the address also
+  means pairing the browser again: Chrome treats each host:port as a separate site.
 - **The lid setting needs a reboot.** `/etc/systemd/logind.conf.d/always-on.conf` is
   read at boot; until then the lid still suspends. `busctl` (see **Always-on host**)
   shows the live value, the file doesn't.
