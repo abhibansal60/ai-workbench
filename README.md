@@ -53,6 +53,8 @@ not you have root on the machine.
 | Claude Code plugins | Optional: `mattpocock-skills`, `daily.dev`, `ponytail`, `caveman`, `humanizer` — pick any subset |
 | Tailscale | Optional hand-off: the skill checks it and gives you the install + `sudo tailscale up` commands (needs root, so it never runs them). Lets your phone reach this box |
 | T3 Code | Optional: [t3.codes](https://t3.codes) as a background service on your tailnet, so your phone can run Claude sessions on this box. Telemetry off, Claude as default, no extra sign-ins |
+| Clean dock | Optional, GNOME: only the terminal and the browser stay pinned |
+| Always-on host | Optional: no sleep on AC, lid close ignored, Wi-Fi before login, plus the BIOS battery and power-on settings to make — for a box you reach over Tailscale/T3 |
 | `ai-workbench-doctor` | Always installed — a `doctor` command that reports what's actually configured vs missing |
 
 ## Screenshot
@@ -75,6 +77,13 @@ only fills the gaps. `doctor` shows the current state.
 
 To use it only as a Claude Code skill, copy `.claude/skills/ai-workbench/` into
 `~/.claude/skills/` and ask Claude to set up the AI Workbench.
+
+### Moving to a new machine
+
+Put both machines on the same tailnet, then follow **Moving from another machine** in
+`SKILL.md`: your agent copies `~/code` and `~/.claude` across with rsync (skipping
+`node_modules` and caches), leaves logins for you to redo, and then runs the normal
+setup to fill the gaps.
 
 ## Why a skill and not a script
 

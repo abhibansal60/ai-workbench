@@ -260,6 +260,34 @@ else
     miss "t3" "not installed — optional, see SKILL.md"
 fi
 
+section "Dock (optional, GNOME)"
+if has gsettings && gsettings list-schemas 2>/dev/null | grep -q "^org.gnome.shell$"; then
+    favs=$(gsettings get org.gnome.shell favorite-apps 2>/dev/null | tr -d "[]'" | sed 's/\.desktop//g')
+    ok "pinned apps" "${favs:-none}"
+fi
+
+section "Always-on host (optional)"
+if has gsettings; then
+    ac_sleep=$(gsettings get org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 2>/dev/null | tr -d "'")
+    if [ "$ac_sleep" = "nothing" ]; then ok "sleep on AC" "never"; else miss "sleep on AC" "'${ac_sleep:-unknown}' — box sleeps when idle"; fi
+fi
+lid=$(busctl get-property org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager HandleLidSwitch 2>/dev/null | awk '{print $2}' | tr -d '"')
+if [ "$lid" = "ignore" ]; then ok "lid close" "ignored"
+elif [ -f /etc/systemd/logind.conf.d/always-on.conf ]; then miss "lid close" "'$lid' until the next reboot (config is in place)"
+else miss "lid close" "'${lid:-unknown}' — closing the lid sleeps the box"; fi
+if [ "$(loginctl show-user "$USER" -p Linger --value 2>/dev/null)" = "yes" ]; then ok "linger" "user services run without login"
+else miss "linger" "off — T3 stops at logout"; fi
+if has nmcli; then
+    wifi=$(nmcli -t -f NAME,TYPE con show --active 2>/dev/null | awk -F: '$2=="802-11-wireless"{print $1; exit}')
+    if [ -n "$wifi" ]; then
+        if [ "$(nmcli -g 802-11-wireless-security.psk-flags con show "$wifi" 2>/dev/null)" = "1" ]; then
+            miss "Wi-Fi before login" "'$wifi' password is in the keyring — tick 'Make available to other users'"
+        else
+            ok "Wi-Fi before login" "$wifi"
+        fi
+    fi
+fi
+
 echo ""
 echo -e "${purple}└────────────────────────────────────────────────────────${reset}"
 echo -e "${grey}${ok_count}/${total_count} checks passed${reset}"

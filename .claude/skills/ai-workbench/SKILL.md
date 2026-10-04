@@ -1,6 +1,6 @@
 ---
 name: ai-workbench
-description: Sets up a matrix-green / cyber-purple "AI Workbench" developer environment on Linux — Starship prompt, a correctly-metriced Nerd Font, a matching 16-color terminal palette, a Claude Code status line and optional 75% usage hard stop, modern CLI tools (eza, bat, fzf, zoxide), git delta, zellij, btop, Node.js, clipboard tools (wl-clipboard, xclip) for image paste, and bash aliases with a `dh` help command, plus optional Claude Code plugins and T3 Code (a phone-friendly web UI for Claude sessions). Use when the user asks to set up, theme, or customize their terminal/shell/dev environment on Linux, or wants an "AI Workbench" or similarly-themed dev machine.
+description: Sets up a matrix-green / cyber-purple "AI Workbench" developer environment on Linux — Starship prompt, a correctly-metriced Nerd Font, a matching 16-color terminal palette, a Claude Code status line and optional 75% usage hard stop, modern CLI tools (eza, bat, fzf, zoxide), git delta, zellij, btop, Node.js, clipboard tools (wl-clipboard, xclip) for image paste, and bash aliases with a `dh` help command, plus optional Claude Code plugins, T3 Code (a phone-friendly web UI for Claude sessions), a clean GNOME dock and always-on host settings. Also covers moving a setup from another machine over Tailscale. Use when the user asks to set up, theme, or customize their terminal/shell/dev environment on Linux, or wants an "AI Workbench" or similarly-themed dev machine.
 ---
 
 # AI Workbench
@@ -30,6 +30,46 @@ specifically because the naive approach silently breaks (see **Known gotchas** b
   commands (`starship print-config`, `zellij setup --check`, `bash -n file`), and where
   possible a live smoke test with sample input. A step isn't done until you've checked.
 - **Ask before you build**, per Step 1 below — don't install things nobody asked for.
+
+## Moving from another machine (optional, before Step 0)
+
+If the user has a machine that is already set up and wants this one to match, copy
+their own files across first, then run the skill normally. Step 0 then finds the copied
+config and Step 1 only offers what's still missing. Don't copy installed binaries; the
+skill reinstalls those for the new architecture and paths.
+
+1. **Join both machines to the same tailnet** (see **Tailscale**). On the new machine
+   the user runs `sudo tailscale up --ssh`, so the old one can `ssh <new-name>` with no
+   keys. If the tailnet uses Tailscale SSH "check" mode, the first connection prints a
+   `login.tailscale.com` URL; the user approves it in a browser, then you retry.
+2. **Use the same username on both.** `~/.claude/settings.json`, hooks and T3 store
+   absolute `/home/<user>/...` paths.
+3. **Look before you copy.** List the target's `~/code`, `~/.claude` and `~/.local/bin`
+   first. Don't overwrite anything the user made on the new machine.
+4. **Copy from the old machine** over the tailnet:
+   ```bash
+   NEW=<new-machine-tailnet-name>
+   rsync -aHz --info=progress2 --exclude={node_modules,.next,.venv,venv,__pycache__,.turbo} ~/code/ $NEW:code/
+   rsync -aH --exclude={cache,file-history,paste-cache,shell-snapshots,session-env,sessions,daemon,daemon.log,ide} ~/.claude/ $NEW:.claude/
+   rsync -a ~/.gitconfig $NEW:
+   ```
+   Also copy the user's own scripts from `~/.local/bin` and any app config they name,
+   but not the binaries this skill installs. Excluding build output cut a 5.4 GB
+   `~/code` to about 700 MB.
+5. **Don't copy logins.** Leave the new machine's `~/.claude.json` alone (it holds that
+   machine's Claude login and is created by `claude` on first run). The user signs in
+   again: `gh auth login`, and any other CLIs they use (`vercel login`, `npx -y
+   firebase-tools login`, ...). Each project needs its `npm install` again.
+6. **Optionally name the machines.** The user runs these on each one:
+   ```bash
+   sudo hostnamectl set-hostname <name>
+   sudo sed -i 's/^127\.0\.1\.1.*/127.0.1.1 <name>/' /etc/hosts   # otherwise sudo warns it can't resolve the host
+   sudo tailscale set --hostname=<name>
+   ```
+   MagicDNS then makes `ssh <name>` and `http://<name>:3773` work across the tailnet.
+
+After the copy, each machine's `~/.claude` (memory, skills, `CLAUDE.md`) changes on
+its own. Suggest the user treats one machine as the main one.
 
 ## Step 0 — Detect the environment
 
@@ -132,6 +172,9 @@ Claude/optional) and leave out ones Step 0 found already done. Components:
   Needs root, so the skill checks it and gives you the commands instead of running them
 - **T3 Code** — optional: a self-hosted web/mobile UI (t3.codes) that runs Claude Code
   sessions on this box as a background service, so you can drive them from a phone
+- **Clean dock** — optional, GNOME: pin only the terminal and the browser
+- **Always-on host** — optional: for a box that stays on as a server for T3 and long
+  runs. No sleep on AC, lid close ignored, Wi-Fi before login. Partly root, so partly a hand-off
 
 `ai-workbench-doctor` (see its own section near the end of Step 2) is **not** one of
 these choices — it's installed unconditionally at the end, since it's the tool for
@@ -612,6 +655,9 @@ curl -fsSL https://tailscale.com/install.sh | sh
 sudo tailscale up
 ```
 
+Use `sudo tailscale up --ssh` instead if the user has more than one machine. It turns
+on Tailscale SSH, so the machines reach each other with `ssh <machine-name>` and no keys.
+
 (Read the install script first if the user wants; it's the official one.) If it's
 installed but `tailscale ip -4` is empty, the fix is `sudo tailscale up` (or
 `sudo systemctl start tailscaled`). Verify: `tailscale ip -4` prints a `100.x` address.
@@ -697,6 +743,90 @@ Verify: `t3 --version`, `t3 service status`, the `host` in `server-runtime.json`
 terminal-only. A hook that depends on status-line data (for example `usage-stop.sh`
 reading cached rate-limit numbers) only stays fresh while a terminal Claude session
 runs alongside T3.
+
+**More than one machine.** Each machine's T3 is a separate server with its own
+threads. A browser or phone paired with machine A sees none of machine B's threads,
+even on the same tailnet. Pair each client with each server (`t3 pair` on the server
+whose threads it should see) and open `http://<machine>:3773`. Start long-running work
+on the machine that stays on. Keep the versions equal (`t3 --version` on each).
+`t3 update` restarts the service, which ends every running session, including the one
+running the update. Run it when no thread is busy.
+
+**Expected at boot:** T3 can fail once because the tailnet IP isn't up yet.
+`Restart=always` brings it back within seconds; `journalctl --user -u t3code -b`
+shows the one failure.
+
+### Clean dock (optional, GNOME)
+
+Read the current dock first and show it to the user:
+
+```bash
+gsettings get org.gnome.shell favorite-apps
+ls /usr/share/applications ~/.local/share/applications /var/lib/snapd/desktop/applications 2>/dev/null \
+  | grep -iE 'ptyxis|gnome-terminal|chrome|firefox|chromium'
+```
+
+Ask which apps to keep. The default is the terminal detected in Step 0 and the user's
+browser. Use only `.desktop` IDs that exist in the listing above; GNOME silently drops
+the rest. Common IDs: `org.gnome.Ptyxis.desktop`, `google-chrome.desktop`,
+`firefox_firefox.desktop` (snap).
+
+```bash
+gsettings set org.gnome.shell favorite-apps "['org.gnome.Ptyxis.desktop', 'google-chrome.desktop']"
+```
+
+Unpinning only removes the shortcut; the apps stay installed. Undo with
+`gsettings reset org.gnome.shell favorite-apps`. Fresh Ubuntu has no Chrome: it's a
+`.deb` from google.com/chrome, so hand the user
+`sudo apt install ./google-chrome-stable_current_amd64.deb`.
+
+Verify: the `gsettings get` above prints only the chosen IDs.
+
+### Always-on host (optional, partly hand-off)
+
+For a machine that stays on so T3, Claude sessions and the tailnet are always
+reachable, often with its lid shut and a monitor attached. Lingering (T3's service
+install) already keeps user services running with nobody logged in. These cover the rest:
+
+1. **No sleep on AC.** No root needed:
+   ```bash
+   gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing'
+   ```
+   Leave `sleep-inactive-battery-type` alone: during a power cut, suspending saves the
+   battery instead of draining it.
+2. **Lid close does nothing.** Root, so hand the user:
+   ```bash
+   sudo mkdir -p /etc/systemd/logind.conf.d
+   printf '[Login]\nHandleLidSwitch=ignore\nHandleLidSwitchExternalPower=ignore\nHandleLidSwitchDocked=ignore\n' \
+     | sudo tee /etc/systemd/logind.conf.d/always-on.conf
+   ```
+   It takes effect at the next reboot. Restarting `systemd-logind` also applies it, but
+   that logs out the desktop. **Until then, closing the lid still suspends the box.**
+   With a monitor attached, GNOME turns off the built-in screen when the lid closes,
+   which helps when that screen is broken.
+3. **Wi-Fi before login.** Check that the active connection's password is stored
+   system-wide:
+   ```bash
+   c=$(nmcli -t -f NAME,TYPE con show --active | awk -F: '$2=="802-11-wireless"{print $1; exit}')
+   nmcli -g 802-11-wireless-security.psk-flags con show "$c"   # 0 = OK; 1 = keyring, connects only after login
+   ```
+   If it prints `1`, the user ticks **Make available to other users** in that
+   connection's settings.
+4. **Firmware (the user's step).** In the BIOS/UEFI setup (`sudo systemctl reboot
+   --firmware-setup` opens it on most UEFI machines), set a battery charge limit for a
+   machine that is always plugged in (HP: Battery Health Manager → *Maximize my battery
+   health*), and power on after AC loss. Check
+   `/sys/class/power_supply/BAT*/charge_control_end_threshold` first: if it exists,
+   the limit can be set from Linux instead.
+
+Verify after the reboot:
+
+```bash
+busctl get-property org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager HandleLidSwitch  # "ignore"
+loginctl show-user "$USER" -p Linger      # yes
+systemctl is-enabled tailscaled           # enabled
+ai-workbench-doctor                       # Always-on section
+```
 
 ### `ai-workbench-doctor` (always installed, regardless of Step 1 selections)
 
@@ -790,6 +920,13 @@ Tell the user plainly:
 - **T3 Code shows no status line or mods.** T3 drives the real `claude` binary through
   the Agent SDK, so `CLAUDE.md`, hooks and skills load, but TUI-only features don't
   render. See **Known gaps** in the T3 Code section.
+- **A paired T3 client sees only that server's threads.** Two machines means two T3
+  servers. If a thread "doesn't show up", check which machine the client is paired with.
+- **The lid setting needs a reboot.** `/etc/systemd/logind.conf.d/always-on.conf` is
+  read at boot; until then the lid still suspends. `busctl` (see **Always-on host**)
+  shows the live value, the file doesn't.
+- **Over SSH, `gsettings` needs the session bus.** Prefix with
+  `DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus` or it reads defaults.
 - **`--version` output isn't always plain text.** Some tools (`btop`, some `delta`
   builds) embed their own ANSI color codes even when piped. If you're composing that
   output into another colored line (like `ai-workbench-doctor` does), strip escape codes
