@@ -609,8 +609,9 @@ Step 1, skip the rest. Tell the user what each one *does* before they choose, do
 just list names:
 
 - **`mattpocock-skills`** — a skill pack for engineering workflows: TDD (red-green-
-  refactor), debugging/diagnosis, code review, domain modeling (`CONTEXT.md`/ADRs),
-  merge-conflict resolution, prototyping. Marketplace repo: `mattpocock/skills`.
+  refactor), debugging/diagnosis, code review, domain modeling (`GLOSSARY.md`/ADRs),
+  prototyping, spec-to-tickets flows, PR bodies (`pr`) and session retros (`/retro`).
+  Marketplace repo: `mattpocock/skills`.
 - **`daily.dev`** — pulls real-time developer articles/trends into Claude's answers,
   as a workaround for the model's training-data cutoff. Marketplace repo:
   `dailydotdev/daily`.
