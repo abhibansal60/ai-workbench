@@ -27,9 +27,10 @@ system monitor, and diffs, instead of eleven mismatched default themes.
 > Formerly `cyberdeck-setup`. Renamed throughout — GitHub repo, skill folder,
 > `SKILL.md`'s internal name, and every asset filename/identifier.
 
-Everything installs to `~/.local`. No `sudo`, no `apt`, no `snap` — every tool is
-fetched as a portable binary/tarball from its own GitHub releases page, so this works
-identically whether or not you have root on the machine.
+Everything installs to `~/.local`. No `sudo`, no `apt install`, no `snap` — every tool
+is fetched as a portable binary/tarball from its own releases page (the clipboard tools
+are unpacked from Ubuntu's `.deb`s without root), so this works identically whether or
+not you have root on the machine.
 
 ## What it sets up
 
@@ -47,6 +48,8 @@ identically whether or not you have root on the machine.
 | btop | Themed system monitor |
 | bash aliases | Claude Code, Codex, Git, Docker, Python, Node and navigation shortcuts, plus a `dh` command that prints all of them |
 | GitHub CLI | Installed and ready for you to run `gh auth login` (this one step stays manual, on purpose) |
+| Node.js | LTS tarball, checksum-verified. Status-line token totals, the daily.dev status line, `npx` and some plugins need it |
+| Clipboard tools | `wl-clipboard` + `xclip`, so Claude Code can paste images on Linux, plus `pbcopy`/`pbpaste` |
 | Claude Code plugins | Optional: `mattpocock-skills`, `daily.dev`, `ponytail`, `caveman`, `humanizer` — pick any subset |
 | Tailscale | Optional hand-off: the skill checks it and gives you the install + `sudo tailscale up` commands (needs root, so it never runs them). Lets your phone reach this box |
 | T3 Code | Optional: [t3.codes](https://t3.codes) as a background service on your tailnet, so your phone can run Claude sessions on this box. Telemetry off, Claude as default, no extra sign-ins |
@@ -106,7 +109,8 @@ that a fixed script can't safely special-case for every environment.
 See the **Known gotchas** section at the bottom of `SKILL.md` — it documents real bugs
 hit while building this (a Nerd Font variant that breaks letter-spacing in VTE
 terminals, PUA glyphs that can silently vanish when written by an LLM, GTK's
-per-pane font caching) so they don't get rediscovered by every contributor.
+per-pane font caching, a Ptyxis background process that keeps drawing wide cells
+until it's fully restarted) so they don't get rediscovered by every contributor.
 
 ## Contributing
 

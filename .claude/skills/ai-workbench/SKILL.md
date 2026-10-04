@@ -1,6 +1,6 @@
 ---
 name: ai-workbench
-description: Sets up a matrix-green / cyber-purple "AI Workbench" developer environment on Linux — Starship prompt, a correctly-metriced Nerd Font, a matching 16-color terminal palette, a Claude Code status line and optional 75% usage hard stop, modern CLI tools (eza, bat, fzf, zoxide), git delta, zellij, btop, and bash aliases with a `dh` help command, plus optional Claude Code plugins and T3 Code (a phone-friendly web UI for Claude sessions). Use when the user asks to set up, theme, or customize their terminal/shell/dev environment on Linux, or wants an "AI Workbench" or similarly-themed dev machine.
+description: Sets up a matrix-green / cyber-purple "AI Workbench" developer environment on Linux — Starship prompt, a correctly-metriced Nerd Font, a matching 16-color terminal palette, a Claude Code status line and optional 75% usage hard stop, modern CLI tools (eza, bat, fzf, zoxide), git delta, zellij, btop, Node.js, clipboard tools (wl-clipboard, xclip) for image paste, and bash aliases with a `dh` help command, plus optional Claude Code plugins and T3 Code (a phone-friendly web UI for Claude sessions). Use when the user asks to set up, theme, or customize their terminal/shell/dev environment on Linux, or wants an "AI Workbench" or similarly-themed dev machine.
 ---
 
 # AI Workbench
@@ -40,7 +40,7 @@ uname -s                      # must be Linux
 uname -m                      # x86_64 / aarch64 / etc. — determines which release asset to fetch
 echo "$SHELL"                 # must be bash (or /bin/bash)
 sudo -n true 2>&1             # passwordless sudo available? (informational only — never rely on it)
-command -v starship eza bat fzf zoxide delta zellij btop code t3 tailscale 2>&1  # what's already installed
+command -v starship eza bat fzf zoxide delta zellij btop code gh t3 tailscale wl-copy xclip 2>&1  # what's already installed
 command -v curl git unzip python3 jq node claude 2>&1   # prerequisites, see below
 ```
 
@@ -59,13 +59,26 @@ command -v curl git unzip python3 jq node claude 2>&1   # prerequisites, see bel
   curl -fsSL "https://github.com/jqlang/jq/releases/latest/download/jq-linux-$a" -o ~/.local/bin/jq
   chmod +x ~/.local/bin/jq && jq --version
   ```
-- `node`: optional. Only the status line's session-token segment uses it, and that
-  segment is skipped without it. Mention it; don't install it unasked.
+- `node`: optional, offered as its own component in Step 1. The status line's
+  session-token segment, the daily.dev status line, `npx` and some plugins (caveman
+  installs npm packages) need it. Say what's missing without it; don't install it unasked.
 - `claude`: the status line, plugins and T3 Code all need Claude Code. If it's missing,
   install it with `curl -fsSL https://claude.ai/install.sh | bash` (user-local, no
   sudo) and tell the user to run `claude` once to sign in.
 
 This step is done when `command -v curl git jq` prints all three paths.
+
+**Config that points at missing programs.** A machine that was set up before, or got
+dotfiles copied from another box, can have config that names a program that isn't
+there. Each one fails quietly, so check them in Step 0 and tell the user:
+
+```bash
+git config --global --get core.pager                                  # delta, but no delta = paged git output fails
+git config --global --get-all credential.https://github.com.helper   # a gh path that doesn't exist = HTTPS push fails
+jq -r '.statusLine.command // empty' ~/.claude/settings.json          # e.g. statusline-combined.sh, which runs node
+```
+
+Offer the matching component in Step 1 (git delta, GitHub CLI, Node.js) as the fix.
 
 **Terminal emulator detection** (determines whether the palette/font steps in Step 2
 can be automated or need manual instructions):
@@ -91,7 +104,9 @@ terminal's config format.
 
 ## Step 1 — Ask what to install
 
-Use `AskUserQuestion` (multiSelect) with one line per component, e.g.:
+Use `AskUserQuestion` (multiSelect) with one line per component. It takes at most 4
+questions with 4 options each, so group the components (look, CLI tools, apps,
+Claude/optional) and leave out ones Step 0 found already done. Components:
 
 - **VS Code** — installed as a portable user-local build, with a desktop launcher (no sudo/snap/apt needed)
 - **Starship prompt** — matrix-green/cyber-purple two-line prompt (git, language runtimes, cmd duration)
@@ -107,6 +122,9 @@ Use `AskUserQuestion` (multiSelect) with one line per component, e.g.:
 - **btop** — themed system monitor
 - **bash aliases + `dh` help command** — dev shortcuts (git, docker, npm, etc.) plus a colorized help listing
 - **GitHub CLI (`gh`)** — installed and ready for the user to authenticate
+- **Node.js** — LTS tarball in `~/.local/share/node`, checksum-verified, no sudo
+- **Clipboard tools** — `wl-clipboard` and `xclip`, extracted from Ubuntu's own
+  packages without root. Claude Code needs one of them to paste images on Linux
 - **Claude Code plugins** — optional, pick any subset (see **Claude Code plugins**
   below for what each one does): `mattpocock-skills`, `daily.dev`, `ponytail`,
   `caveman`, `humanizer`
@@ -232,6 +250,23 @@ print `100` (monospace).
 particular cache the font at pane-creation time. Always tell the user to open a new
 tab (not reuse the current one) to see the change, and warn that a genuinely stuck
 pane may need the whole app restarted, not just a new tab.
+
+**Ptyxis needs a full restart after a *new* font is installed, not a new tab.** It
+runs one background process (`ptyxis --gapplication-service`) for every window, and
+closing windows doesn't always stop it. If that process started before the font
+existed, every new tab and window draws each character in a cell far wider than the
+letter, as if letter-spacing were on. Check and tell the user:
+
+```bash
+ps -o lstart= -p "$(pgrep -of 'ptyxis --gapplication-service')"   # before the font install = stale
+```
+
+The user restarts it (you can't: your own session usually runs inside Ptyxis): close
+every Ptyxis window, run `pkill -f 'ptyxis --gapplication-service'`, open Ptyxis
+again. To prove the font is fine before asking, open a fresh, separate instance:
+`ptyxis --standalone -- bash -c 'echo MMMMMiiiii00000; sleep 60'`. Even spacing there
+plus wide spacing in the user's windows means the service is stale, not the font.
+`ai-workbench-doctor` checks this.
 
 ### Terminal color palette (Ptyxis-automated; other terminals: manual)
 
@@ -463,6 +498,55 @@ outside that one `gh auth login` invocation.
 
 Verify: `gh auth status` (exit 0 = authenticated).
 
+### Node.js
+
+Install the current LTS from nodejs.org as a tarball, verify its checksum, and link the
+binaries into `~/.local/bin`:
+
+```bash
+V=$(curl -sSL https://nodejs.org/dist/index.json | python3 -c "import json,sys;print(next(r['version'] for r in json.load(sys.stdin) if r['lts']))")
+a=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/')
+curl -sSL "https://nodejs.org/dist/$V/node-$V-linux-$a.tar.xz" -o /tmp/node.tar.xz
+curl -sSL "https://nodejs.org/dist/$V/SHASUMS256.txt" | grep "node-$V-linux-$a.tar.xz" \
+  | awk '{print $1"  /tmp/node.tar.xz"}' | sha256sum -c -        # must print OK
+mkdir -p ~/.local/share/node
+tar -xJf /tmp/node.tar.xz -C ~/.local/share/node --strip-components=1
+for b in node npm npx; do ln -sf ~/.local/share/node/bin/$b ~/.local/bin/$b; done
+```
+
+Verify: `node --version && npm --version`, then the status line mock payload (token
+totals and any daily.dev line now render). `npm install -g` puts programs in
+`~/.local/share/node/bin`, which isn't on `PATH`. Tell the user. If they want global
+installs on `PATH`, ask before setting `npm config set prefix` or editing `~/.bashrc`.
+Plugins that failed to install npm packages earlier (`claude plugin list` shows a note)
+need a reinstall now.
+
+### Clipboard tools
+
+Claude Code reads pasted images on Linux with `wl-paste` (Wayland) or
+`xclip` (X11). Without them, image paste silently does nothing. Both are small
+Ubuntu packages whose only dependencies (`libwayland-client0`; `libx11-6`, `libxmu6`)
+are already on any desktop, so pull the binaries out of the `.deb`s without root:
+
+```bash
+mkdir -p /tmp/clip && cd /tmp/clip
+apt-get download wl-clipboard xclip                     # no root needed
+for d in *.deb; do dpkg-deb -f "$d" Depends; dpkg-deb -x "$d" x; done
+cp x/usr/bin/wl-copy x/usr/bin/wl-paste x/usr/bin/xclip ~/.local/bin/
+ldd ~/.local/bin/wl-copy ~/.local/bin/xclip | grep 'not found'   # must print nothing
+```
+
+If `ldd` reports a missing library, or `apt-get` isn't there (non-Debian distro),
+hand the user `sudo apt install -y wl-clipboard xclip` (or their distro's equivalent)
+instead. The bash aliases add `pbcopy`/`pbpaste`, which pick the right one.
+
+Verify with a round trip. Warn the user first: this replaces what's on their clipboard.
+
+```bash
+echo "ai-workbench test" | wl-copy && wl-paste                 # Wayland
+echo "ai-workbench test" | xclip -selection clipboard && xclip -selection clipboard -o
+```
+
 ### Claude Code plugins (optional)
 
 Each plugin below is independent — install whichever subset the user picked in
@@ -670,6 +754,22 @@ Tell the user plainly:
   a strict parser afterward rather than trusting a visual diff.
 - **GTK terminal font/palette changes need a fresh pane.** `gsettings set` doesn't
   retroactively re-render an already-open tab.
+- **A Ptyxis started before the font install draws over-wide cells in every new
+  window too.** Its background `--gapplication-service` process outlives its windows.
+  The font metrics are fine (all glyphs 600/1000 units); the fix is a full restart.
+  See the Nerd Font section. Don't chase the font file first.
+- **Look before you guess at visual bugs.** The user's latest screenshot is usually in
+  `~/Pictures/Screenshots/`. To capture one yourself on GNOME Wayland:
+  `gdbus call --session --dest org.freedesktop.portal.Desktop --object-path
+  /org/freedesktop/portal/desktop --method org.freedesktop.portal.Screenshot.Screenshot
+  "" "{'interactive': <false>}"` saves `~/Pictures/Screenshot.png`. It captures the
+  whole screen, including other apps, so delete it once you've looked.
+- **Fresh Ubuntu has no `pip`.** To inspect a font's metrics, download the pure-Python
+  `fonttools` wheel from PyPI and unpack it with `python3 -m zipfile -e`, then run it
+  with `PYTHONPATH`.
+- **Old config can name programs that aren't installed** (`core.pager = delta`, a `gh`
+  credential helper, a status line that runs `node`). Nothing warns you. Step 0 checks
+  them and the doctor flags them.
 - **`git diff | delta` won't show delta's styling if you only set `core.pager`** — git
   only invokes the configured pager for direct TTY output, not piped/redirected output.
   Test by piping into delta explicitly.

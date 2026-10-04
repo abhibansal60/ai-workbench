@@ -43,6 +43,26 @@ fi
 if fc-list 2>/dev/null | grep -qi "JetBrainsMono Nerd Font Mono"; then
     miss "Nerd Font (bad variant)" "the broken 'Mono' patch is ALSO installed — remove it, it breaks letter-spacing in VTE terminals"
 fi
+if has gsettings && gsettings list-schemas 2>/dev/null | grep -q "^org.gnome.Ptyxis$"; then
+    pfont=$(gsettings get org.gnome.Ptyxis font-name 2>/dev/null | tr -d "'")
+    if [ "$(gsettings get org.gnome.Ptyxis use-system-font 2>/dev/null)" = "false" ] && [[ "$pfont" == "JetBrainsMono Nerd Font "* ]]; then
+        ok "Ptyxis font" "$pfont"
+    else
+        miss "Ptyxis font" "not set to JetBrainsMono Nerd Font (see SKILL.md)"
+    fi
+    # Ptyxis keeps one background process for every window. If it started before
+    # the font was installed, every new tab and window draws over-wide cells.
+    font_file=~/.local/share/fonts/JetBrainsMonoNerdFont/JetBrainsMonoNerdFont-Regular.ttf
+    svc_pid=$(pgrep -of 'ptyxis --gapplication-service')
+    if [ -n "$svc_pid" ] && [ -f "$font_file" ]; then
+        svc_start=$(( $(date +%s) - $(ps -o etimes= -p "$svc_pid" | tr -d ' ') ))
+        if [ "$svc_start" -lt "$(stat -c %Y "$font_file")" ]; then
+            miss "Ptyxis restart" "running since before the font install — close every window, then: pkill -f 'ptyxis --gapplication-service'"
+        else
+            ok "Ptyxis restart" "started after the font install"
+        fi
+    fi
+fi
 
 section "Terminal palette"
 if command -v gsettings >/dev/null 2>&1 && gsettings list-schemas 2>/dev/null | grep -q "^org.gnome.Ptyxis$"; then
@@ -108,7 +128,8 @@ done
 section "git delta"
 if has delta; then ok "delta" "$(delta --version 2>/dev/null)"; else miss "delta" "not on PATH"; fi
 if [ "$(git config --get core.pager 2>/dev/null)" = "delta" ]; then
-    ok "git core.pager" "set to delta"
+    if has delta; then ok "git core.pager" "set to delta"
+    else miss "git core.pager" "set to delta, but delta isn't installed — paged git output fails"; fi
 else
     miss "git core.pager" "not set to delta"
 fi
@@ -153,6 +174,27 @@ if has gh; then
 else
     miss "gh" "not on PATH"
 fi
+# A credential helper copied from another machine can point at a gh that isn't here.
+gh_helper=$(git config --global --get-all credential.https://github.com.helper 2>/dev/null | grep -o '![^ ]*gh' | head -1)
+if [ -n "$gh_helper" ]; then
+    if [ -x "${gh_helper#!}" ] || has "${gh_helper#!}"; then
+        ok "git credential helper" "${gh_helper#!}"
+    else
+        miss "git credential helper" "${gh_helper#!} is missing — HTTPS push/pull to GitHub fails"
+    fi
+fi
+
+section "Node.js"
+if has node; then ok "node" "$(node --version 2>/dev/null)"; else miss "node" "not on PATH — status-line tokens, daily.dev line, npx and some plugins need it"; fi
+if has npm; then ok "npm" "$(npm --version 2>/dev/null)"; else miss "npm" "not on PATH"; fi
+
+section "Clipboard"
+if [ -n "$WAYLAND_DISPLAY" ] || [ "$XDG_SESSION_TYPE" = "wayland" ]; then
+    if has wl-copy && has wl-paste; then ok "wl-clipboard" "$(wl-copy --version 2>/dev/null | head -1)"
+    else miss "wl-clipboard" "missing — Claude Code can't paste images; see SKILL.md"; fi
+fi
+if has xclip; then ok "xclip" "$(xclip -version 2>&1 | head -1) (X11 and XWayland apps)"
+else miss "xclip" "missing — needed on X11; see SKILL.md"; fi
 
 section "Claude Code plugins (optional)"
 for p in mattpocock-skills daily.dev ponytail caveman humanizer; do

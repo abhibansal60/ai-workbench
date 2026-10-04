@@ -118,6 +118,18 @@ alias reload='source ~/.bashrc && echo "bashrc reloaded"'
 alias path='echo -e "${PATH//:/\\n}"'
 
 # ---------------------------------------------------------------------------
+# Clipboard — wl-clipboard on Wayland, xclip on X11 (macOS-style names)
+# ---------------------------------------------------------------------------
+pbcopy() {
+    if [ -n "$WAYLAND_DISPLAY" ] && command -v wl-copy >/dev/null; then wl-copy "$@"
+    else xclip -selection clipboard "$@"; fi
+}
+pbpaste() {
+    if [ -n "$WAYLAND_DISPLAY" ] && command -v wl-paste >/dev/null; then wl-paste --no-newline "$@"
+    else xclip -selection clipboard -o "$@"; fi
+}
+
+# ---------------------------------------------------------------------------
 # Functions
 # ---------------------------------------------------------------------------
 mkcd() { mkdir -p "$1" && cd "$1" || return; }
@@ -235,6 +247,10 @@ devhelp() {
     print_row "reload" "source ~/.bashrc"
     print_row "path"   "print \$PATH, one entry per line"
     print_row "doctor" "check what's installed/configured vs missing"
+    echo ""
+    echo -e "${cyan}Clipboard${reset}"
+    print_row "pbcopy"  "stdin to clipboard (wl-copy / xclip)"
+    print_row "pbpaste" "clipboard to stdout"
     echo -e "${purple}└────────────────────────────────────────────────────────${reset}"
     echo -e "${grey}source: ~/.bash_aliases  ·  edit it and run 'reload' to apply${reset}"
 }
