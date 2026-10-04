@@ -270,6 +270,8 @@ section "Always-on host (optional)"
 if has gsettings; then
     ac_sleep=$(gsettings get org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 2>/dev/null | tr -d "'")
     if [ "$ac_sleep" = "nothing" ]; then ok "sleep on AC" "never"; else miss "sleep on AC" "'${ac_sleep:-unknown}' — box sleeps when idle"; fi
+    bat_sleep=$(gsettings get org.gnome.settings-daemon.plugins.power sleep-inactive-battery-type 2>/dev/null | tr -d "'")
+    ok "sleep on battery" "${bat_sleep:-unknown} (either is fine; 'nothing' keeps it reachable unplugged)"
 fi
 lid=$(busctl get-property org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager HandleLidSwitch 2>/dev/null | awk '{print $2}' | tr -d '"')
 if [ "$lid" = "ignore" ]; then ok "lid close" "ignored"

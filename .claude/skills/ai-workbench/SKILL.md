@@ -796,8 +796,11 @@ install) already keeps user services running with nobody logged in. These cover 
    ```bash
    gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing'
    ```
-   Leave `sleep-inactive-battery-type` alone: during a power cut, suspending saves the
-   battery instead of draining it.
+   Ask about battery too. A laptop the user carries, or one that should stay reachable
+   while unplugged, needs `sleep-inactive-battery-type 'nothing'` as well (the default
+   suspends after about 15 minutes on battery). On a box that is always plugged in,
+   leaving it at `suspend` saves the battery during a power cut. The screen still blanks
+   after `org.gnome.desktop.session idle-delay`; that doesn't stop anything running.
 2. **Lid close does nothing.** Root, so hand the user:
    ```bash
    sudo mkdir -p /etc/systemd/logind.conf.d
