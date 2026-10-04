@@ -66,7 +66,10 @@ skill reinstalls those for the new architecture and paths.
    sudo sed -i 's/^127\.0\.1\.1.*/127.0.1.1 <name>/' /etc/hosts   # otherwise sudo warns it can't resolve the host
    sudo tailscale set --hostname=<name>
    ```
-   MagicDNS then makes `ssh <name>` and `http://<name>:3773` work across the tailnet.
+   MagicDNS then makes `ssh <name>` work across the tailnet. For T3, use the full
+   name, `http://<name>.<tailnet>.ts.net:3773` (`tailscale status --json | jq -r
+   .Self.DNSName`). On the machine itself, the short name hits the `127.0.1.1` line in
+   `/etc/hosts`, and T3 only listens on the tailnet IP, so the browser gets "connection refused".
 
 After the copy, each machine's `~/.claude` (memory, skills, `CLAUDE.md`) changes on
 its own. Suggest the user treats one machine as the main one.
@@ -747,7 +750,8 @@ runs alongside T3.
 **More than one machine.** Each machine's T3 is a separate server with its own
 threads. A browser or phone paired with machine A sees none of machine B's threads,
 even on the same tailnet. Pair each client with each server (`t3 pair` on the server
-whose threads it should see) and open `http://<machine>:3773`. Start long-running work
+whose threads it should see) and open `http://<machine>.<tailnet>.ts.net:3773`,
+which works from every device, including the machine itself. Start long-running work
 on the machine that stays on. Keep the versions equal (`t3 --version` on each).
 `t3 update` restarts the service, which ends every running session, including the one
 running the update. Run it when no thread is busy.
@@ -922,6 +926,9 @@ Tell the user plainly:
   render. See **Known gaps** in the T3 Code section.
 - **A paired T3 client sees only that server's threads.** Two machines means two T3
   servers. If a thread "doesn't show up", check which machine the client is paired with.
+- **`http://<machine>:3773` is refused on that same machine.** The short name resolves
+  to `127.0.1.1` from `/etc/hosts`; T3 binds only the tailnet IP. Use the full
+  `<machine>.<tailnet>.ts.net` name or the `100.x` IP.
 - **The lid setting needs a reboot.** `/etc/systemd/logind.conf.d/always-on.conf` is
   read at boot; until then the lid still suspends. `busctl` (see **Always-on host**)
   shows the live value, the file doesn't.
