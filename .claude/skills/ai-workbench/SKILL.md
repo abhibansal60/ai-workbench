@@ -1,6 +1,6 @@
 ---
 name: ai-workbench
-description: Sets up a matrix-green / cyber-purple "AI Workbench" developer environment on Linux — Starship prompt, a correctly-metriced Nerd Font, a matching 16-color terminal palette, a Claude Code status line and optional 75% usage hard stop, modern CLI tools (eza, bat, fzf, zoxide), git delta, zellij, btop, Node.js, clipboard tools (wl-clipboard, xclip) for image paste, and bash aliases with a `dh` help command, plus optional Claude Code plugins, T3 Code (a phone-friendly web UI for Claude sessions), a clean GNOME dock and always-on host settings. Also covers moving a setup from another machine over Tailscale. Use when the user asks to set up, theme, or customize their terminal/shell/dev environment on Linux, or wants an "AI Workbench" or similarly-themed dev machine.
+description: Sets up a matrix-green / cyber-purple "AI Workbench" developer environment on Linux — Starship prompt, a correctly-metriced Nerd Font, a matching 16-color terminal palette, a Claude Code status line and optional 75% usage hard stop, modern CLI tools (eza, bat, fzf, zoxide), git delta, zellij, btop, Node.js, clipboard tools (wl-clipboard, xclip) for image paste, and bash aliases with a `dh` help command, plus optional Claude Code plugins, T3 Code (a phone-friendly web UI for Claude sessions), a clean GNOME dock, always-on host settings, offline voice typing (Handy) and remote desktop between machines. Also covers moving a setup from another machine over Tailscale. Use when the user asks to set up, theme, or customize their terminal/shell/dev environment on Linux, or wants an "AI Workbench" or similarly-themed dev machine.
 ---
 
 # AI Workbench
@@ -178,7 +178,12 @@ Claude/optional) and leave out ones Step 0 found already done. Components:
   sessions on this box as a background service, so you can drive them from a phone
 - **Clean dock** — optional, GNOME: pin only the terminal and the browser
 - **Always-on host** — optional: for a box that stays on as a server for T3 and long
-  runs. No sleep on AC, lid close ignored, Wi-Fi before login. Partly root, so partly a hand-off
+  runs. No sleep on AC, lid close ignored, sleep masked, Wi-Fi before login. Partly
+  root, so partly a hand-off
+- **Voice typing** — optional, partly hand-off: Handy with an offline speech model, a
+  GNOME shortcut, and text pasted into the focused app (T3, terminal, browser)
+- **Remote desktop** — optional: see and control another GNOME machine's screen over
+  the tailnet (GNOME Desktop Sharing on the host, Remmina on the client)
 
 `ai-workbench-doctor` (see its own section near the end of Step 2) is **not** one of
 these choices — it's installed unconditionally at the end, since it's the tool for
@@ -714,11 +719,25 @@ Ask before each piece below. Each one changes something that outlives the sessio
    printf '[Service]\nEnvironment=T3CODE_TELEMETRY_ENABLED=false\n' > "$d/telemetry.conf"
    host=$(tailscale ip -4 2>/dev/null | head -1); host=${host:-127.0.0.1}
    printf '[Service]\nEnvironment=T3CODE_HOST=%s\n' "$host" > "$d/tailnet.conf"
+   # Retry forever: after resume the port can stay busy for a while (EADDRINUSE),
+   # and the default start limit would leave T3 down until someone resets it.
+   printf '[Unit]\nStartLimitIntervalSec=0\n' > "$d/watchdog.conf"
    systemctl --user daemon-reload && systemctl --user restart t3code.service
    cat ~/.t3/userdata/server-runtime.json   # "host" must match, port is 3773
    ```
-   This is plain HTTP inside the tailnet. If Tailscale Serve (HTTPS) is enabled on
-   the tailnet, `t3 pair --tailscale` publishes T3 over HTTPS instead.
+   This is plain HTTP inside the tailnet. For HTTPS as well, when the tailnet has
+   HTTPS certificates on and the user is the Tailscale operator
+   (`tailscale debug prefs | jq .OperatorUser`), point Tailscale Serve at the bound IP.
+   The config persists in `tailscaled` and doesn't restart T3:
+   ```bash
+   tailscale serve --bg http://$host:3773
+   tailscale serve status   # https://<name>.<tailnet>.ts.net -> http://<tailnet IP>:3773
+   ```
+   Don't use `t3 pair --tailscale` or `T3CODE_TAILSCALE_SERVE` with a tailnet bind:
+   they point Serve at `127.0.0.1:3773`, where nothing listens, so HTTPS times out.
+   The first HTTPS request takes a few seconds while Tailscale issues the certificate.
+   To pair over HTTPS, mint a normal `t3 pair` link and replace its
+   `http://<IP>:3773` with `https://<name>.<tailnet>.ts.net`.
 4. **Projects.** Add each repo the user works in. Ask which ones; for a `~/code`
    layout, offer all of its git repos:
    ```bash
@@ -771,9 +790,15 @@ whose threads it should see) and open `http://<machine>:3773`. One client can al
 hold both: **Settings → Connections → Add environment** with the other machine's
 pairing URL lists both machines' threads together, and **Load balancing** (Prefer /
 Manual only, saved per client) picks which machine new threads go to. Start long-running work
-on the machine that stays on. Keep the versions equal (`t3 --version` on each).
-`t3 update` restarts the service, which ends every running session, including the one
-running the update. Run it when no thread is busy.
+on the machine that stays on. Keep the versions equal: the phone app refuses a
+server whose orchestration protocol is older than its own ("Client not supported").
+`assets/t3-sync-update` (install to `~/.local/bin` on each machine) resolves the
+newest release on `T3_CHANNEL` (default `preview`), updates every host to that exact
+version, and checks each server's `/.well-known/t3/environment`. Pass the hosts as
+arguments, or set `T3_HOSTS="a b"` in `~/.bashrc`; remote hosts need SSH. It feeds the update's y/N prompt
+one `y`; never pipe `yes` into `script` for this, it buffers until the OOM killer
+steps in. `t3 update` restarts the service, which ends every running session,
+including the one running the update. Run it when no thread is busy.
 
 **Expected at boot:** T3 can fail once because the tailnet IP isn't up yet.
 `Restart=always` brings it back within seconds; `journalctl --user -u t3code -b`
@@ -830,7 +855,14 @@ install) already keeps user services running with nobody logged in. These cover 
    that logs out the desktop. **Until then, closing the lid still suspends the box.**
    With a monitor attached, GNOME turns off the built-in screen when the lid closes,
    which helps when that screen is broken.
-3. **Wi-Fi before login.** Check that the active connection's password is stored
+3. **Never suspend, whatever asks.** Steps 1 and 2 don't stop a Suspend click in the
+   GNOME menu or another D-Bus caller. Masking the sleep targets does, and takes effect
+   at once. Root, so hand the user:
+   ```bash
+   sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
+   ```
+   Undo with the same line using `unmask`. A masked machine still shuts down and reboots.
+4. **Wi-Fi before login.** Check that the active connection's password is stored
    system-wide:
    ```bash
    c=$(nmcli -t -f NAME,TYPE con show --active | awk -F: '$2=="802-11-wireless"{print $1; exit}')
@@ -838,7 +870,7 @@ install) already keeps user services running with nobody logged in. These cover 
    ```
    If it prints `1`, the user ticks **Make available to other users** in that
    connection's settings.
-4. **Firmware (the user's step).** In the BIOS/UEFI setup (`sudo systemctl reboot
+5. **Firmware (the user's step).** In the BIOS/UEFI setup (`sudo systemctl reboot
    --firmware-setup` opens it on most UEFI machines), set a battery charge limit for a
    machine that is always plugged in (HP: Battery Health Manager → *Maximize my battery
    health*), and power on after AC loss. Check
@@ -850,9 +882,100 @@ Verify after the reboot:
 ```bash
 busctl get-property org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager HandleLidSwitch  # "ignore"
 loginctl show-user "$USER" -p Linger      # yes
+systemctl is-enabled suspend.target       # masked
 systemctl is-enabled tailscaled           # enabled
 ai-workbench-doctor                       # Always-on section
 ```
+
+### Voice typing (optional, partly hand-off)
+
+[Handy](https://github.com/cjpais/Handy) records while a shortcut is held or toggled,
+transcribes on the machine (nothing leaves it), and pastes into the focused window.
+Notes are for GNOME on Wayland (Ubuntu 26.04), where most dictation tools can't type
+into other apps.
+
+1. **Install (root, hand off).** Download the latest `.deb` with
+   `gh release download -R cjpais/Handy -p 'Handy_*_amd64.deb' -D /tmp`, then give
+   the user:
+   ```bash
+   sudo apt install -y /tmp/Handy_*_amd64.deb ydotool
+   echo 'KERNEL=="uinput", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"' | sudo tee /etc/udev/rules.d/80-uinput.rules
+   sudo usermod -aG input "$USER"
+   sudo systemctl reboot -i     # -i: a logged-in desktop session otherwise blocks it
+   ```
+   Tell the user the `input` group lets their programs create a virtual keyboard and
+   read keyboard input. Ubuntu's `ydotool` package ships and enables its own
+   `ydotool.service` user unit; don't add a second one (two daemons fight over the
+   socket and one crash-loops).
+2. **Model.** Use **Parakeet V2** (`parakeet-tdt-0.6b-v2`, English, ONNX int8 on CPU,
+   transcribes once on stop). Download and verify it into Handy's models folder:
+   ```bash
+   d=~/.local/share/com.pais.handy/models; mkdir -p "$d"
+   curl -fsSL -o /tmp/pv2.tgz https://blob.handy.computer/parakeet-v2-int8.tar.gz
+   echo "ac9b9429984dd565b25097337a887bb7f0f8ac393573661c651f0e7d31563991  /tmp/pv2.tgz" | sha256sum -c && tar -xzf /tmp/pv2.tgz -C "$d"
+   ```
+   The streaming default (Parakeet Unified GGUF) picks the Vulkan backend on Intel
+   iGPUs and ran at 0.65x real time on a UHD 620; V2 on the CPU ran at 6x. Check
+   `Transcription completed in` lines in `~/.local/share/com.pais.handy/logs/handy.log`.
+3. **Settings.** Quit Handy, edit `~/.local/share/com.pais.handy/settings_store.json`
+   with `jq`, then start it again:
+   `selected_model=parakeet-tdt-0.6b-v2`, `paste_method=ctrl_shift_v`,
+   `audio_feedback=true` (start/stop chimes), `model_unload_timeout=never`,
+   `overlay_style=none`, `autostart_enabled=true`. Keep the overlay off: GNOME has no
+   layer-shell, so the overlay becomes a normal window that takes focus and swallows
+   the paste. Running Handy under X11 (`GDK_BACKEND=x11`) doesn't fix that, and it hung.
+4. **Shortcut.** Handy's own global shortcut doesn't fire in other apps on GNOME
+   Wayland, so add a GNOME custom shortcut that runs `handy --toggle-transcription`.
+   Use `<Super>z` unless the user wants another key. Ubuntu already owns
+   `<Control><Alt>d` (show desktop) and `<Super>d`. Confirm GNOME accepted the binding:
+   `journalctl --user --since -1min | grep "Failed to grab accelerator.*handy"` must
+   print nothing.
+   ```bash
+   p=/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/handy/
+   s=org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$p
+   gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings
+   # prints @as [] when empty; otherwise put $p into the existing list, don't replace it
+   gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "['$p']"
+   gsettings set $s name 'Handy dictation'; gsettings set $s command 'handy --toggle-transcription'
+   gsettings set $s binding '<Super>z'
+   ```
+
+Verify: `handy --toggle-transcription`, two seconds, `handy --cancel`, then the log
+shows `Microphone is receiving samples` and `returned to idle state`.
+
+### Remote desktop (optional)
+
+To see and control machine A's real GNOME screen from machine B over the tailnet. No
+root on A. B needs a client (`sudo apt install -y remmina`, hand off).
+
+On A (over SSH, prefix `gsettings`/`grdctl` with
+`DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus`):
+```bash
+d=~/.local/share/gnome-remote-desktop; mkdir -p $d
+openssl req -new -newkey rsa:4096 -days 3650 -nodes -x509 -subj /CN=$(hostname) -keyout $d/rdp-tls.key -out $d/rdp-tls.crt
+grdctl rdp set-tls-key $d/rdp-tls.key; grdctl rdp set-tls-cert $d/rdp-tls.crt
+grdctl rdp set-credentials "$USER" '<random password>'   # store it on B with chmod 600
+grdctl rdp disable-view-only; grdctl rdp enable
+systemctl --user enable --now gnome-remote-desktop
+grdctl status        # RDP enabled, View-only: no; port 3389
+```
+It listens on every interface, not only the tailnet; tell the user.
+
+On B, write a saved Remmina profile instead of using quick connect, because Remmina
+can't save the password for a quick connect. `~/.local/share/remmina/<A>.remmina`:
+```ini
+[remmina]
+name=<A>
+protocol=RDP
+server=<A>
+username=<user>
+scale=1
+window_maximize=1
+precommand=ssh -o BatchMode=yes -o ConnectTimeout=8 <A> 'loginctl unlock-session $(loginctl show-user <user> -p Display --value)'
+```
+`scale=1` fits A's screen to the window (Desktop Sharing can't change A's resolution).
+`precommand` unlocks A first: GNOME refuses to share a locked session, so the window
+opens and closes at once and A's log says `Session creation inhibited`.
 
 ### `ai-workbench-doctor` (always installed, regardless of Step 1 selections)
 

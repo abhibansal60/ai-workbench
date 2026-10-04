@@ -279,6 +279,8 @@ elif [ -f /etc/systemd/logind.conf.d/always-on.conf ]; then miss "lid close" "'$
 else miss "lid close" "'${lid:-unknown}' — closing the lid sleeps the box"; fi
 if [ "$(loginctl show-user "$USER" -p Linger --value 2>/dev/null)" = "yes" ]; then ok "linger" "user services run without login"
 else miss "linger" "off — T3 stops at logout"; fi
+if [ "$(systemctl is-enabled suspend.target 2>/dev/null)" = "masked" ]; then ok "suspend" "masked — nothing can sleep the box"
+else miss "suspend" "not masked — a menu click or D-Bus call can still sleep the box"; fi
 if has nmcli; then
     wifi=$(nmcli -t -f NAME,TYPE con show --active 2>/dev/null | awk -F: '$2=="802-11-wireless"{print $1; exit}')
     if [ -n "$wifi" ]; then
@@ -288,6 +290,34 @@ if has nmcli; then
             ok "Wi-Fi before login" "$wifi"
         fi
     fi
+fi
+
+section "Voice typing (optional)"
+if has handy; then
+    hs=~/.local/share/com.pais.handy/settings_store.json
+    model=$(jq -r '.settings.selected_model // empty' "$hs" 2>/dev/null)
+    ok "handy" "model ${model:-unknown}"
+    if [ "$(jq -r '.settings.overlay_style // empty' "$hs" 2>/dev/null)" = "none" ]; then ok "overlay" "off (an overlay steals the paste on GNOME)"
+    else miss "overlay" "on — on GNOME it takes focus and the paste is lost"; fi
+    if systemctl --user is-active --quiet ydotool 2>/dev/null; then ok "ydotool" "running"; else miss "ydotool" "not running — pasting fails"; fi
+    if [ -w /dev/uinput ]; then ok "/dev/uinput" "writable"; else miss "/dev/uinput" "not writable — udev rule or input group missing (re-login?)"; fi
+    if gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings 2>/dev/null | grep -q handy; then
+        ok "shortcut" "$(gsettings get org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/handy/ binding 2>/dev/null)"
+    else miss "shortcut" "no GNOME shortcut runs handy --toggle-transcription"; fi
+else
+    miss "handy" "not installed — optional, see SKILL.md"
+fi
+
+section "Remote desktop (optional)"
+if has grdctl && [ "$(systemctl --user is-active gnome-remote-desktop 2>/dev/null)" = "active" ]; then
+    ok "sharing this desktop" "RDP on port 3389"
+else
+    miss "sharing this desktop" "off — optional, see SKILL.md"
+fi
+if has remmina; then
+    ok "remmina" "$(ls ~/.local/share/remmina/*.remmina 2>/dev/null | wc -l) saved connection(s)"
+else
+    miss "remmina" "not installed — needed only to open another machine's desktop"
 fi
 
 echo ""

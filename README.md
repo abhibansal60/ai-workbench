@@ -27,10 +27,12 @@ system monitor, and diffs, instead of eleven mismatched default themes.
 > Formerly `cyberdeck-setup`. Renamed throughout — GitHub repo, skill folder,
 > `SKILL.md`'s internal name, and every asset filename/identifier.
 
-Everything installs to `~/.local`. No `sudo`, no `apt install`, no `snap` — every tool
+The core tools install to `~/.local`. No `sudo`, no `apt install`, no `snap` — every tool
 is fetched as a portable binary/tarball from its own releases page (the clipboard tools
 are unpacked from Ubuntu's `.deb`s without root), so this works identically whether or
-not you have root on the machine.
+not you have root on the machine. The optional host pieces (Tailscale, always-on,
+voice typing, the Remmina client) need root; the agent gives you those commands to run
+instead of running them.
 
 ## What it sets up
 
@@ -52,9 +54,12 @@ not you have root on the machine.
 | Clipboard tools | `wl-clipboard` + `xclip`, so Claude Code can paste images on Linux, plus `pbcopy`/`pbpaste` |
 | Claude Code plugins | Optional: `mattpocock-skills`, `daily.dev`, `ponytail`, `caveman`, `humanizer` — pick any subset |
 | Tailscale | Optional hand-off: the skill checks it and gives you the install + `sudo tailscale up` commands (needs root, so it never runs them). Lets your phone reach this box |
-| T3 Code | Optional: [t3.codes](https://t3.codes) as a background service on your tailnet, so your phone can run Claude sessions on this box. Telemetry off, Claude as default, no extra sign-ins |
+| T3 Code | Optional: [t3.codes](https://t3.codes) as a background service on your tailnet, so your phone can run Claude sessions on this box. Telemetry off, Claude as default, restarts itself after a crash, optional HTTPS through Tailscale Serve |
+| Two machines | `t3-sync-update` puts every machine's T3 server on the same release and checks they match (the phone app refuses an older server) |
 | Clean dock | Optional, GNOME: only the terminal and the browser stay pinned |
-| Always-on host | Optional: no sleep on AC, lid close ignored, Wi-Fi before login, plus the BIOS battery and power-on settings to make — for a box you reach over Tailscale/T3 |
+| Always-on host | Optional: no sleep on AC, lid close ignored, sleep masked so nothing can suspend it, Wi-Fi before login, plus the BIOS battery and power-on settings to make — for a box you reach over Tailscale/T3 |
+| Voice typing | Optional, needs root for the install: [Handy](https://github.com/cjpais/Handy) with NVIDIA's Parakeet model, fully offline, one GNOME shortcut, pastes into T3 or any app |
+| Remote desktop | Optional: GNOME Desktop Sharing on one machine, a saved Remmina connection on the other that unlocks the screen before it connects |
 | `ai-workbench-doctor` | Always installed — a `doctor` command that reports what's actually configured vs missing |
 
 ## Screenshot
@@ -110,6 +115,7 @@ that a fixed script can't safely special-case for every environment.
     ├── zellij-config.kdl
     ├── AI-Workbench.palette      # Ptyxis 16-color palette
     ├── gitconfig-delta.txt
+    ├── t3-sync-update            # keep every machine's T3 on the same release
     └── ai-workbench-doctor         # status-check command, installed unconditionally
 ```
 

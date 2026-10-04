@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# t3-sync-update [host...]  (default: the hosts in $T3_HOSTS, e.g. export T3_HOSTS="maxi mini")
+# Update every host's T3 server to the same newest release on a channel, then check
+# that each /.well-known/t3/environment reports that version.
+# T3_CHANNEL=preview|nightly|stable (default preview). T3_PORT (default 3773).
+set -euo pipefail
+
+channel=${T3_CHANNEL:-preview}
+port=${T3_PORT:-3773}
+hosts=("$@"); [ ${#hosts[@]} -gt 0 ] || read -ra hosts <<< "${T3_HOSTS:-}"
+[ ${#hosts[@]} -gt 0 ] || { echo "usage: t3-sync-update host... (or set T3_HOSTS)" >&2; exit 2; }
+
+case $channel in
+  stable) pattern='^v[0-9]+[.][0-9]+[.][0-9]+$' ;;
+  preview|nightly) pattern="-$channel[.]" ;;
+  *) echo "unknown channel: $channel" >&2; exit 2 ;;
+esac
+
+target=$(gh release list -R pingdotgg/t3code -L 200 --json tagName,publishedAt \
+  -q "[.[] | select(.tagName | test(\"$pattern\"))] | sort_by(.publishedAt) | last | .tagName")
+target=${target#v}
+[ -n "$target" ] || { echo "no $channel release found" >&2; exit 1; }
+echo "target: $target ($channel)"
+
+version_of() {
+  curl -fsS -m 5 "http://$1:$port/.well-known/t3/environment" 2>/dev/null | jq -r .serverVersion 2>/dev/null || true
+}
+
+for h in "${hosts[@]}"; do
+  cur=$(version_of "$h")
+  if [ "$cur" = "$target" ]; then echo "$h: already $target"; continue; fi
+  echo "$h: ${cur:-unreachable} -> $target"
+  # Detached via systemd-run so the update survives the T3 restart (it may host this session).
+  # The update can ask y/N; feed one "y" through a pty. Never pipe `yes` into script: it buffers until OOM.
+  run="systemd-run --user --collect --unit=t3-sync-update-\$(date +%s) bash -c '(sleep 3; printf \"y\\n\"; sleep 120) | script -qec \"t3 update --channel $channel -y $target\" /dev/null >>\$HOME/.t3/sync-update.log 2>&1'"
+  if [ "$h" = "$(hostname)" ]; then bash -c "$run"; else ssh "$h" "$run"; fi
+done
+
+echo "waiting for servers to report $target..."
+for _ in $(seq 60); do
+  ok=1
+  for h in "${hosts[@]}"; do [ "$(version_of "$h")" = "$target" ] || ok=0; done
+  [ $ok = 1 ] && break
+  sleep 5
+done
+
+status=0
+for h in "${hosts[@]}"; do
+  v=$(version_of "$h")
+  if [ "$v" = "$target" ]; then echo "OK   $h $v"; else echo "FAIL $h ${v:-unreachable}"; status=1; fi
+done
+exit $status
