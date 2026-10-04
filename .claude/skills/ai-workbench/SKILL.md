@@ -738,6 +738,22 @@ Ask before each piece below. Each one changes something that outlives the sessio
    Treat the pairing URL like a password. Don't paste it into commits, logs or
    screenshots.
 
+7. **Optional: T3 as a desktop app.** A launcher that opens T3 in its own Chrome app
+   window, starts at login and sits in the dock. Use an address that reaches T3 *from
+   this machine* and that this machine's Chrome is already paired with (the tailnet IP
+   or full `ts.net` name; the short hostname is refused locally):
+   ```bash
+   url=http://<tailnet-ip>:3773
+   mkdir -p ~/.local/share/icons ~/.local/share/applications ~/.config/autostart
+   curl -fsS "$url/apple-touch-icon.png" -o ~/.local/share/icons/t3code.png
+   printf '[Desktop Entry]\nType=Application\nName=T3 Code\nExec=google-chrome --app=%s\nIcon=%s\nCategories=Development;\n' \
+     "$url" "$HOME/.local/share/icons/t3code.png" > ~/.local/share/applications/t3code.desktop
+   cp ~/.local/share/applications/t3code.desktop ~/.config/autostart/
+   desktop-file-validate ~/.local/share/applications/t3code.desktop
+   ```
+   Then add `t3code.desktop` to the dock (see **Clean dock**). Swap `google-chrome`
+   for the user's Chromium-based browser if they use another one.
+
 Verify: `t3 --version`, `t3 service status`, the `host` in `server-runtime.json`, and
 `ai-workbench-doctor`'s T3 section. Update later with `t3 update`. Remove with
 `t3 uninstall` (projects and threads in `~/.t3/userdata` are kept).
