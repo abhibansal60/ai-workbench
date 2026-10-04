@@ -45,10 +45,12 @@ if fc-list 2>/dev/null | grep -qi "JetBrainsMono Nerd Font Mono"; then
 fi
 if has gsettings && gsettings list-schemas 2>/dev/null | grep -q "^org.gnome.Ptyxis$"; then
     pfont=$(gsettings get org.gnome.Ptyxis font-name 2>/dev/null | tr -d "'")
-    if [ "$(gsettings get org.gnome.Ptyxis use-system-font 2>/dev/null)" = "false" ] && [[ "$pfont" == "JetBrainsMono Nerd Font "* ]]; then
-        ok "Ptyxis font" "$pfont"
+    if [ "$(gsettings get org.gnome.Ptyxis use-system-font 2>/dev/null)" = "true" ]; then
+        ok "Ptyxis font" "system font, $(gsettings get org.gnome.desktop.interface monospace-font-name 2>/dev/null | tr -d "'") (icons fall back to the Nerd Font)"
+    elif [[ "$pfont" == "JetBrainsMono Nerd Font "* ]]; then
+        ok "Ptyxis font" "$pfont (wider than the system font)"
     else
-        miss "Ptyxis font" "not set to JetBrainsMono Nerd Font (see SKILL.md)"
+        miss "Ptyxis font" "$pfont has no Nerd Font icons — use the system font (see SKILL.md)"
     fi
     # Ptyxis keeps one background process for every window. If it started before
     # the font was installed, every new tab and window draws over-wide cells.

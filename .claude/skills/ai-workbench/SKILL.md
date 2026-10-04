@@ -233,18 +233,21 @@ Verify it registered correctly: `fc-match "JetBrainsMono Nerd Font"` should reso
 one of the files you just copied, and `fc-query --format='%{spacing}\n' <file>` should
 print `100` (monospace).
 
-**Wiring the terminal to actually use it:**
+**Wiring the terminal: keep the system font.** The default is to leave the terminal
+on the system monospace font (Ubuntu Sans Mono on Ubuntu). Its letters are narrower
+than JetBrainsMono's, and that's the look the user wants. The Nerd Font still has to
+be installed: fontconfig falls back to it for the icon glyphs the system font lacks,
+so Starship/eza/btop icons render either way.
 
 - **Ptyxis:**
   ```bash
-  gsettings set org.gnome.Ptyxis use-system-font false
-  gsettings set org.gnome.Ptyxis font-name 'JetBrainsMono Nerd Font 11'
+  gsettings set org.gnome.Ptyxis use-system-font true
+  gsettings set org.gnome.Ptyxis font-name 'JetBrainsMono Nerd Font 11'   # only used if the user turns the system font off
   ```
-- **GNOME Terminal:** set the font on the relevant profile UUID under
-  `org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:<uuid>/`.
-- **Other terminals (Konsole, Alacritty, kitty, xterm, etc.):** don't guess at the
-  config file. Tell the user the exact font name (`JetBrainsMono Nerd Font`) and point
-  them at that terminal's font preference — every terminal exposes this differently.
+- **GNOME Terminal / other terminals:** leave the font setting alone.
+
+Only switch the terminal to JetBrainsMono if the user asks for it (Ptyxis:
+`use-system-font false`). Expect wider letter spacing; that is the font, not a bug.
 
 **Important:** font changes only apply to *new* panes/windows/tabs — GTK terminals in
 particular cache the font at pane-creation time. Always tell the user to open a new
@@ -754,6 +757,9 @@ Tell the user plainly:
   a strict parser afterward rather than trusting a visual diff.
 - **GTK terminal font/palette changes need a fresh pane.** `gsettings set` doesn't
   retroactively re-render an already-open tab.
+- **JetBrainsMono looks spaced out next to the system font.** It's a wider font, not
+  the `NerdFontMono` bug. Keep Ptyxis on the system font (`use-system-font true`);
+  icons still come from the Nerd Font through fontconfig fallback.
 - **A Ptyxis started before the font install draws over-wide cells in every new
   window too.** Its background `--gapplication-service` process outlives its windows.
   The font metrics are fine (all glyphs 600/1000 units); the fix is a full restart.
