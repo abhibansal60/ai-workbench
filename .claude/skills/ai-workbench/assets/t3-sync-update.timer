@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily T3 Code sync
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

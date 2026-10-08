@@ -55,7 +55,7 @@ instead of running them.
 | Claude Code plugins | Optional: `mattpocock-skills`, `daily.dev`, `ponytail`, `caveman`, `humanizer` — pick any subset |
 | Tailscale | Optional hand-off: the skill checks it and gives you the install + `sudo tailscale up` commands (needs root, so it never runs them). Lets your phone reach this box |
 | T3 Code | Optional: [t3.codes](https://t3.codes) as a background service on your tailnet, so your phone can run Claude sessions on this box. Telemetry off, Claude as default, restarts itself after a crash, optional HTTPS through Tailscale Serve |
-| Two machines | `t3-sync-update` puts every machine's T3 server on the same release and checks they match (the phone app refuses an older server) |
+| Two machines | `t3-sync-update` puts every machine's T3 server on the same release and checks they match (the phone app refuses an older server). A systemd timer on the always-on machine does it daily at 04:00 |
 | Clean dock | Optional, GNOME: only the terminal and the browser stay pinned |
 | Always-on host | Optional: no sleep on AC, lid close ignored, sleep masked so nothing can suspend it, Wi-Fi before login, plus the BIOS battery and power-on settings to make — for a box you reach over Tailscale/T3 |
 | Voice typing | Optional, needs root for the install: [Handy](https://github.com/cjpais/Handy) with NVIDIA's Parakeet model, fully offline, one GNOME shortcut, pastes into T3 or any app |
@@ -116,6 +116,8 @@ that a fixed script can't safely special-case for every environment.
     ├── AI-Workbench.palette      # Ptyxis 16-color palette
     ├── gitconfig-delta.txt
     ├── t3-sync-update            # keep every machine's T3 on the same release
+    ├── t3-sync-update.service    # systemd user unit that runs it
+    ├── t3-sync-update.timer      # daily 04:00 trigger, install on one machine
     └── ai-workbench-doctor         # status-check command, installed unconditionally
 ```
 

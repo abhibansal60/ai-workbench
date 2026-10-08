@@ -801,6 +801,14 @@ one `y`; never pipe `yes` into `script` for this, it buffers until the OOM kille
 steps in. `t3 update` restarts the service, which ends every running session,
 including the one running the update. Run it when no thread is busy.
 
+**Automatic sync (one machine only).** `assets/t3-sync-update.service` and
+`assets/t3-sync-update.timer` go in `~/.config/systemd/user/` on the always-on
+machine only; it reaches the others over SSH. Edit the hosts in `ExecStart`, then
+`systemctl --user daemon-reload && systemctl --user enable --now t3-sync-update.timer`.
+It runs daily at 04:00 (plus up to 5 min random delay, `Persistent=true`). A run
+with nothing new restarts nothing; a run with a new release restarts T3 on every
+host and ends running turns. Logs: `journalctl --user -u t3-sync-update`.
+
 **Expected at boot:** T3 can fail once because the tailnet IP isn't up yet.
 `Restart=always` brings it back within seconds; `journalctl --user -u t3code -b`
 shows the one failure.
