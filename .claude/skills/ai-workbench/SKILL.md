@@ -779,6 +779,12 @@ Verify: `t3 --version`, `t3 service status`, the `host` in `server-runtime.json`
 `ai-workbench-doctor`'s T3 section. Update later with `t3 update`. Remove with
 `t3 uninstall` (projects and threads in `~/.t3/userdata` are kept).
 
+**Inline HTML pages and previews.** Agents show charts and mockups in a thread with
+`html_render`, and check them first with `html_preview`. Preview needs T3's headless
+Chrome, which Ubuntu 23.10+ AppArmor blocks ("This host blocks the sandbox T3's
+browser runs in"). Hand the user this root command, once per machine:
+`sudo env "PATH=$PATH" t3 browser setup`. Rendering works without it; only previews fail.
+
 **Known gaps.** The Claude Code status line and dev mods don't render in T3; they are
 terminal-only. A hook that depends on status-line data (for example `usage-stop.sh`
 reading cached rate-limit numbers) only stays fresh while a terminal Claude session
