@@ -800,8 +800,8 @@ Manual only, saved per client) picks which machine new threads go to. Start long
 on the machine that stays on. Keep the versions equal: the phone app refuses a
 server whose orchestration protocol is older than its own ("Client not supported").
 `assets/t3-sync-update` (install to `~/.local/bin` on each machine) resolves the
-newest release on `T3_CHANNEL` (default `preview`), updates every host to that exact
-version, and checks each server's `/.well-known/t3/environment`. Pass the hosts as
+newest release on `T3_CHANNEL` (default `preview`; the timer unit sets `nightly`, which the
+Android app needs), updates every host to that exact version, and checks each server's `/.well-known/t3/environment`. Pass the hosts as
 arguments, or set `T3_HOSTS="a b"` in `~/.bashrc`; remote hosts need SSH. It feeds the update's y/N prompt
 one `y`; never pipe `yes` into `script` for this, it buffers until the OOM killer
 steps in. `t3 update` restarts the service, which ends every running session,
