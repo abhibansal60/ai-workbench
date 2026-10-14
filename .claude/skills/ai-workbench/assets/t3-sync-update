@@ -31,8 +31,9 @@ for h in "${hosts[@]}"; do
   if [ "$cur" = "$target" ]; then echo "$h: already $target"; continue; fi
   echo "$h: ${cur:-unreachable} -> $target"
   # Detached via systemd-run so the update survives the T3 restart (it may host this session).
+  # --allow-downgrade: T3 sorts "nightly" below "preview", so switching channel looks like a downgrade.
   # The update can ask y/N; feed one "y" through a pty. Never pipe `yes` into script: it buffers until OOM.
-  run="systemd-run --user --collect --unit=t3-sync-update-\$(date +%s) bash -c '(sleep 3; printf \"y\\n\"; sleep 120) | script -qec \"t3 update --channel $channel -y $target\" /dev/null >>\$HOME/.t3/sync-update.log 2>&1'"
+  run="systemd-run --user --collect --unit=t3-sync-update-\$(date +%s) bash -c '(sleep 3; printf \"y\\n\"; sleep 120) | script -qec \"t3 update --channel $channel -y --allow-downgrade $target\" /dev/null >>\$HOME/.t3/sync-update.log 2>&1'"
   if [ "$h" = "$(hostname)" ]; then bash -c "$run"; else ssh "$h" "$run"; fi
 done
 
