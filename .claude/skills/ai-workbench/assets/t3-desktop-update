@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# t3-desktop-update <version>  e.g. 0.0.46-nightly.20261014.3093
+# Install the T3 desktop app (x86_64 AppImage) at that version, extracted, so it runs without FUSE 2.
+# Each version gets ~/Applications/t3code-<version>; ~/Applications/t3code-app is a symlink to the current one.
+# The desktop app starts its own server on the same ~/.t3 database, so it must match the service version.
+set -euo pipefail
+
+ver=${1:?usage: t3-desktop-update <version>}
+apps=$HOME/Applications
+dest=$apps/t3code-$ver
+link=$apps/t3code-app
+
+if [ "$(readlink -f "$link" 2>/dev/null)" = "$dest" ]; then echo "desktop: already $ver"; exit 0; fi
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+gh release download "v$ver" -R pingdotgg/t3code -p "T3-Code-$ver-x86_64.AppImage" -D "$tmp"
+chmod +x "$tmp"/*.AppImage
+(cd "$tmp" && ./*.AppImage --appimage-extract >/dev/null)
+rm -rf "$dest" && mv "$tmp/squashfs-root" "$dest"
+
+running=0
+if pgrep -f "$link/t3code" >/dev/null || pgrep -f "$apps/t3code-[^/]*/t3code" >/dev/null; then running=1; fi
+pkill -f "$apps/t3code-app/t3code" || true
+pkill -f "$apps/t3code-[^/]*/t3code" || true
+
+# A real directory from an older manual install: keep it aside once, then use the symlink.
+if [ -d "$link" ] && [ ! -L "$link" ]; then mv "$link" "$apps/t3code-old-$(date +%s)"; fi
+ln -sfn "$dest" "$link"
+
+# Keep the newest two versions.
+ls -1dt "$apps"/t3code-0.* 2>/dev/null | tail -n +3 | xargs -r rm -rf
+
+echo "desktop: installed $ver"
+[ $running = 1 ] && echo "desktop: was running and has been stopped; reopen it from the app menu"
+exit 0

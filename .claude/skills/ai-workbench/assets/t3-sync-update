@@ -48,6 +48,9 @@ done
 status=0
 for h in "${hosts[@]}"; do
   v=$(version_of "$h")
-  if [ "$v" = "$target" ]; then echo "OK   $h $v"; else echo "FAIL $h ${v:-unreachable}"; status=1; fi
+  if [ "$v" = "$target" ]; then echo "OK   $h $v"; else echo "FAIL $h ${v:-unreachable}"; status=1; continue; fi
+  # The desktop app runs its own server on the same database, so keep it on the same version.
+  desk="[ -e ~/Applications/t3code-app ] && ~/.local/bin/t3-desktop-update $target || true"
+  if [ "$h" = "$(hostname)" ]; then bash -c "$desk"; else ssh "$h" "$desk"; fi
 done
 exit $status
