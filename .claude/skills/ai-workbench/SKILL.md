@@ -801,7 +801,9 @@ on the machine that stays on. Keep the versions equal: the phone app refuses a
 server whose orchestration protocol is older than its own ("Client not supported").
 `assets/t3-sync-update` (install to `~/.local/bin` on each machine) resolves the
 newest release on `T3_CHANNEL` (default `preview`; the timer unit sets `nightly`, which the
-Android app needs), updates every host to that exact version, and checks each server's `/.well-known/t3/environment`. When a host has the desktop app (`~/Applications/t3code-app`), it then runs
+Android app needs), updates every host to that exact version, refusing any host on another channel unless
+given `--switch-channel` (channels keep separate database schemas, so the switch moves `statev2.sqlite` and the
+legacy `state.sqlite` to `~/.t3/backup-<old channel>-<date>/` and the new channel starts with no threads), and checks each server's `/.well-known/t3/environment`. When a host has the desktop app (`~/Applications/t3code-app`), it then runs
 `assets/t3-desktop-update <version>` there (install to `~/.local/bin` too): it extracts that version's AppImage
 (no FUSE 2 needed) and points the `t3code-app` symlink at it. The desktop app starts its own server on the same
 `~/.t3` database, so an older desktop app next to a newer service can corrupt the migration history. Pass the hosts as
