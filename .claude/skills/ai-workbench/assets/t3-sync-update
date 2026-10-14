@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
-# t3-sync-update [host...]  (default: the hosts in $T3_HOSTS, e.g. export T3_HOSTS="maxi mini")
+# t3-sync-update [--switch-channel] [host...]  (default: the hosts in $T3_HOSTS, e.g. export T3_HOSTS="maxi mini")
 # Update every host's T3 server to the same newest release on a channel, then check
 # that each /.well-known/t3/environment reports that version.
 # T3_CHANNEL=preview|nightly|stable (default preview). T3_PORT (default 3773).
+# Channels keep separate database schemas: a server refuses a database another channel wrote.
+# A host on a different channel is refused unless --switch-channel is given; then its T3 database
+# moves to ~/.t3/backup-<old channel>-<date>/ and the new channel starts empty (threads don't carry over).
 set -euo pipefail
+
+switch=0
+[ "${1:-}" = --switch-channel ] && { switch=1; shift; }
 
 channel=${T3_CHANNEL:-preview}
 port=${T3_PORT:-3773}
@@ -22,6 +28,27 @@ target=${target#v}
 [ -n "$target" ] || { echo "no $channel release found" >&2; exit 1; }
 echo "target: $target ($channel)"
 
+on_host() { if [ "$1" = "$(hostname)" ]; then bash -c "$2"; else ssh "$1" "$2"; fi; }
+
+channel_of() {
+  case $1 in *-nightly.*) echo nightly ;; *-preview.*) echo preview ;; "") echo unknown ;; *) echo stable ;; esac
+}
+
+# Read each host's installed version from the CLI, so a stopped server still reports its channel.
+declare -A old_channel
+refuse=0
+for h in "${hosts[@]}"; do
+  v=$(on_host "$h" 't3 --version 2>/dev/null' | awk '{print $2}' || true)
+  old_channel[$h]=$(channel_of "${v#v}")
+  if [ "${old_channel[$h]}" != "$channel" ] && [ $switch = 0 ]; then
+    echo "$h is on ${old_channel[$h]} (${v:-no t3}), target channel is $channel" >&2; refuse=1
+  fi
+done
+if [ $refuse = 1 ]; then
+  echo "Refusing to switch channel. Rerun with --switch-channel: it backs up each host's T3 database and starts the new channel empty." >&2
+  exit 1
+fi
+
 version_of() {
   curl -fsS -m 5 "http://$1:$port/.well-known/t3/environment" 2>/dev/null | jq -r .serverVersion 2>/dev/null || true
 }
@@ -30,10 +57,16 @@ for h in "${hosts[@]}"; do
   cur=$(version_of "$h")
   if [ "$cur" = "$target" ]; then echo "$h: already $target"; continue; fi
   echo "$h: ${cur:-unreachable} -> $target"
+  if [ "${old_channel[$h]}" != "$channel" ]; then
+    # Stop the service and the desktop app (it runs its own server on the same database), then move the
+    # database aside. state.sqlite is the legacy v1 database; an empty v2 database would import its old threads.
+    on_host "$h" "systemctl --user stop t3code; pkill -f 'Applications/t3code-[a0]' || true; b=\$HOME/.t3/backup-${old_channel[$h]}-\$(date +%Y%m%d-%H%M); mkdir -p \$b && mv \$HOME/.t3/userdata/statev2.sqlite* \$HOME/.t3/userdata/state.sqlite* \$b/ 2>/dev/null; echo \"$h: database moved to \$b\""
+  fi
   # Detached via systemd-run so the update survives the T3 restart (it may host this session).
   # --allow-downgrade: T3 sorts "nightly" below "preview", so switching channel looks like a downgrade.
+  # `t3 service install` afterwards: the update can leave the unit on the old version ("needs an update or repair").
   # The update can ask y/N; feed one "y" through a pty. Never pipe `yes` into script: it buffers until OOM.
-  run="systemd-run --user --collect --unit=t3-sync-update-\$(date +%s) bash -c '(sleep 3; printf \"y\\n\"; sleep 120) | script -qec \"t3 update --channel $channel -y --allow-downgrade $target\" /dev/null >>\$HOME/.t3/sync-update.log 2>&1'"
+  run="systemd-run --user --collect --unit=t3-sync-update-\$(date +%s) bash -c '(sleep 3; printf \"y\\n\"; sleep 120) | script -qec \"t3 update --channel $channel -y --allow-downgrade $target\" /dev/null >>\$HOME/.t3/sync-update.log 2>&1; t3 service install >>\$HOME/.t3/sync-update.log 2>&1'"
   if [ "$h" = "$(hostname)" ]; then bash -c "$run"; else ssh "$h" "$run"; fi
 done
 
