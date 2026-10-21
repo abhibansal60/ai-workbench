@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# t3-doctor [--fix]
+# Check (and with --fix, repair) the T3 setup on this machine:
+#   1. the service answers on the tailnet IP, and its unit runs the installed version
+#   2. Tailscale Serve HTTPS proxies to the service, not the desktop app's server
+#   3. the desktop app's .desktop files give it its own T3 home (~/.t3-desktop)
+#   4. the desktop app's own server is not exposed (Network access and Tailscale HTTPS off)
+# Since 0.1.1-nightly a T3 home belongs to one server, so the desktop app can't share ~/.t3 with the
+# service ("This T3 home is unavailable"); it runs on ~/.t3-desktop and pairs with the service instead.
+# Exits 1 when something is still broken. Runs hourly from t3-doctor.timer and after t3-sync-update.
+set -uo pipefail
+
+fix=0; [ "${1:-}" = --fix ] && fix=1
+port=${T3_PORT:-3773}
+desk_home=$HOME/.t3-desktop
+bad=0
+
+ok()   { echo "OK   $*"; }
+fail() { echo "FAIL $*"; bad=1; }
+fixed(){ echo "FIX  $*"; }
+
+ip=$(tailscale ip -4 2>/dev/null | head -1)
+[ -n "$ip" ] || { fail "tailscale has no IPv4 address"; exit 1; }
+
+# 1. Service
+if t3 service status 2>&1 | grep -qi "needs an update or repair"; then
+  if [ $fix = 1 ]; then t3 service install >/dev/null 2>&1 && fixed "service unit reinstalled"; else fail "service unit needs repair"; fi
+fi
+if curl -fsS -m 5 "http://$ip:$port/.well-known/t3/environment" >/dev/null 2>&1; then
+  ok "service answers on $ip:$port"
+elif [ $fix = 1 ]; then
+  systemctl --user reset-failed t3code 2>/dev/null; t3 service restart >/dev/null 2>&1; sleep 10
+  curl -fsS -m 5 "http://$ip:$port/.well-known/t3/environment" >/dev/null 2>&1 \
+    && fixed "service restarted" || fail "service does not answer on $ip:$port"
+else
+  fail "service does not answer on $ip:$port"
+fi
+
+# 2. Tailscale Serve
+want="http://$ip:$port"
+have=$(tailscale serve status --json 2>/dev/null | jq -r '[.Web[]?.Handlers["/"].Proxy] | first // empty')
+if [ "$have" = "$want" ]; then
+  ok "tailscale serve -> $want"
+elif [ $fix = 1 ] && tailscale serve --bg "$want" >/dev/null 2>&1; then
+  fixed "tailscale serve ${have:-none} -> $want"
+else
+  fail "tailscale serve is ${have:-none}, want $want"
+fi
+
+# 3 and 4 only apply where the desktop app is installed.
+[ -e "$HOME/Applications/t3code-app" ] || exit $bad
+
+for f in "$HOME/.local/share/applications/t3code-desktop.desktop" "$HOME/.config/autostart/t3code.desktop"; do
+  [ -f "$f" ] || continue
+  if grep -q "^Exec=env T3CODE_HOME=$desk_home " "$f"; then
+    ok "$(basename "$f") uses $desk_home"
+  elif [ $fix = 1 ]; then
+    sed -i "s#^Exec=\(env T3CODE_HOME=[^ ]* \)\?#Exec=env T3CODE_HOME=$desk_home #" "$f" && fixed "$(basename "$f") now uses $desk_home"
+  else
+    fail "$(basename "$f") does not set T3CODE_HOME=$desk_home"
+  fi
+done
+
+settings=$desk_home/userdata/desktop-settings.json
+if [ -f "$settings" ] && jq -e '.tailscaleServeEnabled == true or has("serverExposureMode")' "$settings" >/dev/null; then
+  if [ $fix = 1 ]; then
+    # The app keeps its settings in memory and writes them back, so quit it before editing, then reopen it.
+    running=0
+    if pgrep -f "[A]pplications/t3code-[^/]*/t3code --no-sandbox" >/dev/null; then
+      running=1; pkill -f "[A]pplications/t3code-[^/]*/t3code --no-sandbox"; sleep 5
+    fi
+    tmp=$(mktemp) && jq 'del(.serverExposureMode) | .tailscaleServeEnabled = false' "$settings" >"$tmp" && mv "$tmp" "$settings"
+    # Quitting the app clears Tailscale Serve, so point it back at the service.
+    tailscale serve --bg "$want" >/dev/null 2>&1
+    [ $running = 1 ] && gtk-launch t3code-desktop.desktop >/dev/null 2>&1
+    fixed "desktop app exposure turned off"
+  else
+    fail "desktop app exposes its own server (Network access or Tailscale HTTPS is on)"
+  fi
+else
+  ok "desktop app exposure off"
+fi
+
+exit $bad

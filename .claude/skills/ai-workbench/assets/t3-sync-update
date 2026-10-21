@@ -82,8 +82,8 @@ status=0
 for h in "${hosts[@]}"; do
   v=$(version_of "$h")
   if [ "$v" = "$target" ]; then echo "OK   $h $v"; else echo "FAIL $h ${v:-unreachable}"; status=1; continue; fi
-  # The desktop app runs its own server on the same database, so keep it on the same version.
-  desk="[ -e ~/Applications/t3code-app ] && ~/.local/bin/t3-desktop-update $target || true"
-  if [ "$h" = "$(hostname)" ]; then bash -c "$desk"; else ssh "$h" "$desk"; fi
+  # Keep the desktop app on the service's version, then repair what a release can break (see t3-doctor).
+  after="[ -e ~/Applications/t3code-app ] && ~/.local/bin/t3-desktop-update $target; ~/.local/bin/t3-doctor --fix"
+  on_host "$h" "$after" || status=1
 done
 exit $status

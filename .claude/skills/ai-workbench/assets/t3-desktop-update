@@ -2,7 +2,7 @@
 # t3-desktop-update <version>  e.g. 0.0.46-nightly.20261014.3093
 # Install the T3 desktop app (x86_64 AppImage) at that version, extracted, so it runs without FUSE 2.
 # Each version gets ~/Applications/t3code-<version>; ~/Applications/t3code-app is a symlink to the current one.
-# The desktop app starts its own server on the same ~/.t3 database, so it must match the service version.
+# The desktop app starts its own server (on ~/.t3-desktop, see t3-doctor); keep it on the service's version.
 set -euo pipefail
 
 ver=${1:?usage: t3-desktop-update <version>}
