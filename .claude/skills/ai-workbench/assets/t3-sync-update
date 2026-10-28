@@ -6,7 +6,26 @@
 # Channels keep separate database schemas: a server refuses a database another channel wrote.
 # A host on a different channel is refused unless --switch-channel is given; then its T3 database
 # moves to ~/.t3/backup-<old channel>-<date>/ and the new channel starts empty (threads don't carry over).
+# An unreachable host is skipped (the rest still update) and the run fails. With T3_ALERT=1 (the timer
+# sets it) a failed run opens or comments on a GitHub issue "t3-sync-update failed" in T3_ALERT_REPO
+# (default abhibansal60/ai-workbench), and a clean run closes it.
 set -euo pipefail
+
+alert_repo=${T3_ALERT_REPO:-abhibansal60/ai-workbench}
+alert_title="t3-sync-update failed"
+alert() {
+  rc=$?
+  [ "${T3_ALERT:-0}" = 1 ] || return 0
+  n=$(gh issue list -R "$alert_repo" --state open --search "\"$alert_title\" in:title" --json number -q '.[0].number' 2>/dev/null || true)
+  if [ $rc = 0 ]; then
+    [ -z "$n" ] || gh issue close "$n" -R "$alert_repo" --comment "Ok again on $(hostname) at $(date -Is)." >/dev/null 2>&1 || true
+    return 0
+  fi
+  body="Run on $(hostname) at $(date -Is) exited $rc. Details: \`journalctl --user -u t3-sync-update -n 40\` on $(hostname)."
+  if [ -n "$n" ]; then gh issue comment "$n" -R "$alert_repo" --body "$body" >/dev/null 2>&1 || true
+  else gh issue create -R "$alert_repo" --title "$alert_title" --body "$body" >/dev/null 2>&1 || true; fi
+}
+trap alert EXIT
 
 switch=0
 [ "${1:-}" = --switch-channel ] && { switch=1; shift; }
@@ -28,7 +47,15 @@ target=${target#v}
 [ -n "$target" ] || { echo "no $channel release found" >&2; exit 1; }
 echo "target: $target ($channel)"
 
-on_host() { if [ "$1" = "$(hostname)" ]; then bash -c "$2"; else ssh "$1" "$2"; fi; }
+on_host() { if [ "$1" = "$(hostname)" ]; then bash -c "$2"; else ssh -o ConnectTimeout=20 -o BatchMode=yes "$1" "$2"; fi; }
+
+# Skip hosts that don't answer, so one sleeping laptop doesn't block the other or read as "no t3".
+live=(); down=()
+for h in "${hosts[@]}"; do
+  if on_host "$h" true 2>/dev/null; then live+=("$h"); else down+=("$h"); fi
+done
+[ ${#live[@]} -gt 0 ] || { echo "FAIL no host reachable: ${down[*]}" >&2; exit 1; }
+hosts=("${live[@]}")
 
 channel_of() {
   case $1 in *-nightly.*) echo nightly ;; *-preview.*) echo preview ;; "") echo unknown ;; *) echo stable ;; esac
@@ -79,6 +106,7 @@ for _ in $(seq 60); do
 done
 
 status=0
+for h in "${down[@]}"; do echo "FAIL $h unreachable"; status=1; done
 for h in "${hosts[@]}"; do
   v=$(version_of "$h")
   if [ "$v" = "$target" ]; then echo "OK   $h $v"; else echo "FAIL $h ${v:-unreachable}"; status=1; continue; fi
