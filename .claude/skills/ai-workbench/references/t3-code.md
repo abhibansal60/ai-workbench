@@ -49,6 +49,7 @@ Ask before each piece below. Each one changes something that outlives the sessio
    printf '[Unit]\nStartLimitIntervalSec=0\n' > "$d/watchdog.conf"
    systemctl --user daemon-reload && systemctl --user restart t3code.service
    cat ~/.t3/userdata/server-runtime.json   # "host" must match, port is 3773
+   Optional OOM protection: run `t3 service protect` as the normal user (it asks for sudo itself; `sudo t3` fails because root's PATH lacks `~/.local/bin`). `t3 service restart` applies the server's OOM score; verify with `t3 service status`.
    ```
    This is plain HTTP inside the tailnet. For HTTPS as well, when the tailnet has
    HTTPS certificates on and the user is the Tailscale operator
