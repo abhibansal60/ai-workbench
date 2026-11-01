@@ -259,7 +259,7 @@ print(c.execute('select count(*) from projection_projects where deleted_at is nu
     if systemctl --user is-enabled --quiet t3-sync-update.timer 2>/dev/null; then
         ok "T3 auto-sync" "daily timer on (this machine syncs the others)"
     else
-        miss "T3 auto-sync" "no timer — needed on one machine only, see SKILL.md"
+        miss "T3 auto-sync" "no timer — needed on one machine only, see references/t3-code.md"
     fi
 else
     miss "t3" "not installed — optional, see SKILL.md"
