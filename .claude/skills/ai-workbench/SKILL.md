@@ -211,6 +211,7 @@ aren't consistent). Download to a scratch dir, extract, `cp` the binary into
 (add `export PATH="$HOME/.local/bin:$PATH"` once, guarded by a grep-check so it's
 never duplicated on a re-run).
 
+All `assets/` paths below and in the references are relative to this skill's directory.
 Each component's steps live in a reference file. Read the file for every component the user selected, in full, before installing it:
 
 - `references/shell-tools.md`: VS Code, Starship, Nerd Font and terminal font fix, terminal palette, Claude Code status line, usage hard stop, eza/bat/fzf/zoxide, git delta, zellij, btop, bash aliases and `dh`
