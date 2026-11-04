@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# t3-sync-update [--switch-channel] [host...]  (default: the hosts in $T3_HOSTS, e.g. export T3_HOSTS="maxi mini")
-# Update every host's T3 server to the same newest release on a channel, then check
-# that each /.well-known/t3/environment reports that version.
-# T3_CHANNEL=preview|nightly|stable (default preview). T3_PORT (default 3773).
-# Channels keep separate database schemas: a server refuses a database another channel wrote.
-# A host on a different channel is refused unless --switch-channel is given; then its T3 database
-# moves to ~/.t3/backup-<old channel>-<date>/ and the new channel starts empty (threads don't carry over).
+# t3-sync-update [host...]  (default: the hosts in $T3_HOSTS, e.g. export T3_HOSTS="maxi mini")
+# Unattended "Update everything": run `t3 update -y` on every host (each stays on its own channel),
+# then check every server reports the version its `t3` is on, and that all hosts match.
+# From the app, the sidebar update button does the same by hand (providers, servers, desktop app).
+# T3 itself refuses an update that would cross channels into an incompatible database; switch
+# channels from Settings → About → Update track, not here.
 # An unreachable host is skipped (the rest still update) and the run fails. With T3_ALERT=1 (the timer
 # sets it) a failed run opens or comments on a GitHub issue "t3-sync-update failed" in T3_ALERT_REPO
 # (default abhibansal60/ai-workbench), and a clean run closes it.
@@ -27,25 +26,9 @@ alert() {
 }
 trap alert EXIT
 
-switch=0
-[ "${1:-}" = --switch-channel ] && { switch=1; shift; }
-
-channel=${T3_CHANNEL:-preview}
 port=${T3_PORT:-3773}
 hosts=("$@"); [ ${#hosts[@]} -gt 0 ] || read -ra hosts <<< "${T3_HOSTS:-}"
 [ ${#hosts[@]} -gt 0 ] || { echo "usage: t3-sync-update host... (or set T3_HOSTS)" >&2; exit 2; }
-
-case $channel in
-  stable) pattern='^v[0-9]+[.][0-9]+[.][0-9]+$' ;;
-  preview|nightly) pattern="-$channel[.]" ;;
-  *) echo "unknown channel: $channel" >&2; exit 2 ;;
-esac
-
-target=$(gh release list -R pingdotgg/t3code -L 200 --json tagName,publishedAt \
-  -q "[.[] | select(.tagName | test(\"$pattern\"))] | sort_by(.publishedAt) | last | .tagName")
-target=${target#v}
-[ -n "$target" ] || { echo "no $channel release found" >&2; exit 1; }
-echo "target: $target ($channel)"
 
 on_host() { if [ "$1" = "$(hostname)" ]; then bash -c "$2"; else ssh -o ConnectTimeout=20 -o BatchMode=yes "$1" "$2"; fi; }
 
@@ -57,61 +40,72 @@ done
 [ ${#live[@]} -gt 0 ] || { echo "FAIL no host reachable: ${down[*]}" >&2; exit 1; }
 hosts=("${live[@]}")
 
-channel_of() {
-  case $1 in *-nightly.*) echo nightly ;; *-preview.*) echo preview ;; "") echo unknown ;; *) echo stable ;; esac
-}
-
-# Read each host's installed version from the CLI, so a stopped server still reports its channel.
-declare -A old_channel
-refuse=0
-for h in "${hosts[@]}"; do
-  v=$(on_host "$h" 't3 --version 2>/dev/null' | awk '{print $2}' || true)
-  old_channel[$h]=$(channel_of "${v#v}")
-  if [ "${old_channel[$h]}" != "$channel" ] && [ $switch = 0 ]; then
-    echo "$h is on ${old_channel[$h]} (${v:-no t3}), target channel is $channel" >&2; refuse=1
-  fi
-done
-if [ $refuse = 1 ]; then
-  echo "Refusing to switch channel. Rerun with --switch-channel: it backs up each host's T3 database and starts the new channel empty." >&2
-  exit 1
-fi
-
-version_of() {
-  curl -fsS -m 5 "http://$1:$port/.well-known/t3/environment" 2>/dev/null | jq -r .serverVersion 2>/dev/null || true
-}
-
-for h in "${hosts[@]}"; do
-  cur=$(version_of "$h")
-  if [ "$cur" = "$target" ]; then echo "$h: already $target"; continue; fi
-  echo "$h: ${cur:-unreachable} -> $target"
-  if [ "${old_channel[$h]}" != "$channel" ]; then
-    # Stop the service and the desktop app (it runs its own server on the same database), then move the
-    # database aside. state.sqlite is the legacy v1 database; an empty v2 database would import its old threads.
-    on_host "$h" "systemctl --user stop t3code; pkill -f 'Applications/t3code-[a0]' || true; b=\$HOME/.t3/backup-${old_channel[$h]}-\$(date +%Y%m%d-%H%M); mkdir -p \$b && mv \$HOME/.t3/userdata/statev2.sqlite* \$HOME/.t3/userdata/state.sqlite* \$b/ 2>/dev/null; echo \"$h: database moved to \$b\""
-  fi
-  # Detached via systemd-run so the update survives the T3 restart (it may host this session).
-  # --allow-downgrade: T3 sorts "nightly" below "preview", so switching channel looks like a downgrade.
-  # `t3 service install` afterwards: the update can leave the unit on the old version ("needs an update or repair").
-  # The update can ask y/N; feed one "y" through a pty. Never pipe `yes` into script: it buffers until OOM.
-  run="systemd-run --user --collect --unit=t3-sync-update-\$(date +%s) bash -c '(sleep 3; printf \"y\\n\"; sleep 120) | script -qec \"t3 update --channel $channel -y --allow-downgrade $target\" /dev/null >>\$HOME/.t3/sync-update.log 2>&1; t3 service install >>\$HOME/.t3/sync-update.log 2>&1'"
-  if [ "$h" = "$(hostname)" ]; then bash -c "$run"; else ssh "$h" "$run"; fi
-done
-
-echo "waiting for servers to report $target..."
-for _ in $(seq 60); do
-  ok=1
-  for h in "${hosts[@]}"; do [ "$(version_of "$h")" = "$target" ] || ok=0; done
-  [ $ok = 1 ] && break
-  sleep 5
-done
-
+# Keep successful units loaded too: otherwise systemd can discard their exit status.
+# Use our exact unit names so another updater's work cannot affect this run.
 status=0
+units=(); updated=()
+run_id="$(date +%s)-$$"
+for h in "${hosts[@]}"; do
+  unit="t3-sync-update-$run_id-${#units[@]}.service"
+  if on_host "$h" "systemd-run --user --property=RemainAfterExit=yes --unit=$unit bash -c 't3 update -y >>\$HOME/.t3/sync-update.log 2>&1'" >/dev/null; then
+    units+=("$unit")
+  else
+    echo "FAIL $h could not launch update"
+    units+=(""); status=1
+  fi
+done
+
+echo "waiting for updates to finish..."
+for i in "${!hosts[@]}"; do
+  h=${hosts[$i]}; unit=${units[$i]}
+  [ -n "$unit" ] || continue
+  finished=0
+  for _ in $(seq 60); do
+    if ! state=$(on_host "$h" "systemctl --user show $unit -p ActiveState --value"); then
+      echo "FAIL $h cannot inspect $unit"; status=1; break
+    fi
+    case "$state" in
+      activating|active|deactivating)
+        # RemainAfterExit leaves a successful update active (exited).
+        if [ "$state" != active ] || [ "$(on_host "$h" "systemctl --user show $unit -p SubState --value")" != exited ]; then
+          sleep 5; continue
+        fi ;;
+    esac
+    finished=1
+    break
+  done
+  if [ "$finished" = 0 ]; then
+    echo "FAIL $h update timed out or could not be inspected ($unit)"; status=1
+  elif result=$(on_host "$h" "systemctl --user show $unit -p Result -p ExecMainCode -p ExecMainStatus") &&
+       grep -qx 'Result=success' <<< "$result" &&
+       grep -qx 'ExecMainCode=1' <<< "$result" &&
+       grep -qx 'ExecMainStatus=0' <<< "$result"; then
+    updated+=("$h")
+  else
+    echo "FAIL $h update failed ($unit): ${result:-no exit status}"; status=1
+  fi
+  # Collect only after inspection; on timeout this also stops the pending update.
+  on_host "$h" "systemctl --user stop $unit && { systemctl --user reset-failed $unit 2>/dev/null || true; }" || status=1
+done
+hosts=("${updated[@]}")
+
+version_of() { curl -fsS -m 5 "http://$1:$port/.well-known/t3/environment" 2>/dev/null | jq -r .serverVersion 2>/dev/null || true; }
+
+# Each server must run its own `t3` version (a stale service unit shows up here), and all must match.
+seen=""
 for h in "${down[@]}"; do echo "FAIL $h unreachable"; status=1; done
+for _ in $(seq 12); do  # the service takes a few seconds to come back
+  [ ${#hosts[@]} -gt 0 ] || break
+  [ -n "$(version_of "${hosts[0]}")" ] && break; sleep 5
+done
 for h in "${hosts[@]}"; do
   v=$(version_of "$h")
-  if [ "$v" = "$target" ]; then echo "OK   $h $v"; else echo "FAIL $h ${v:-unreachable}"; status=1; continue; fi
+  want=$(on_host "$h" 't3 --version' | awk '{print $2}'); want=${want#v}
+  if [ -n "$v" ] && [ "$v" = "$want" ]; then echo "OK   $h $v"; else echo "FAIL $h server ${v:-unreachable}, t3 $want"; status=1; continue; fi
+  seen+="$v "
   # Keep the desktop app on the service's version, then repair what a release can break (see t3-doctor).
-  after="[ -e ~/Applications/t3code-app ] && ~/.local/bin/t3-desktop-update $target; ~/.local/bin/t3-doctor --fix"
+  after="if [ -e ~/Applications/t3code-app ]; then ~/.local/bin/t3-desktop-update $v || exit 1; fi; ~/.local/bin/t3-doctor --fix"
   on_host "$h" "$after" || status=1
 done
+[ "$(printf '%s\n' $seen | sort -u | wc -l)" -le 1 ] || { echo "FAIL hosts run different versions: $seen"; status=1; }
 exit $status
