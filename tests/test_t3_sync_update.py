@@ -39,7 +39,9 @@ elif name == 'systemd-run':
     assert '--property=RemainAfterExit=yes' in args
     assert '--collect' not in args
     unit = next(a.split('=', 1)[1] for a in args if a.startswith('--unit='))
-    rc = subprocess.run(args[args.index('bash'):]).returncode if mode != 'timeout' else None
+    # A transient unit gets the user manager's PATH, which has no ~/.local/bin after a headless boot.
+    unit_env = dict(os.environ, PATH='/usr/bin:/bin')
+    rc = subprocess.run(args[args.index('bash'):], env=unit_env).returncode if mode != 'timeout' else None
     (root / (host + '-' + unit)).write_text(json.dumps(rc))
 elif name == 'systemctl':
     action = args[1]
@@ -92,10 +94,13 @@ class UpdateTests(unittest.TestCase):
             stub = binary / 'stub'
             stub.write_text(STUB)
             stub.chmod(0o755)
-            for name in ('ssh', 'hostname', 'sleep', 'seq', 'systemd-run', 'systemctl', 't3', 'curl'):
+            for name in ('ssh', 'hostname', 'sleep', 'seq', 'systemd-run', 'systemctl', 'curl'):
                 (binary / name).symlink_to(stub)
-            (home / '.local/bin/t3-doctor').symlink_to(stub)
-            env = dict(os.environ, PATH=f'{binary}:/usr/bin:/bin', HOME=str(home),
+            # As on the real hosts, t3 lives only in ~/.local/bin: on the PATH of the timer service
+            # and of an SSH session, but not of a transient systemd unit.
+            for name in ('t3', 't3-doctor'):
+                (home / '.local/bin' / name).symlink_to(stub)
+            env = dict(os.environ, PATH=f'{binary}:{home}/.local/bin:/usr/bin:/bin', HOME=str(home),
                        FAKE_ROOT=str(root), FAKE_SCENARIO=json.dumps(scenario),
                        T3_ALERT='0', FAKE_HOST='maxi')
             result = subprocess.run(['bash', str(SCRIPT), 'maxi', 'mini'], env=env,
@@ -170,7 +175,7 @@ class ReferenceTests(unittest.TestCase):
                     self.assertTrue((path.parent / target.split('#')[0]).is_file(), f'{path}: {target}')
 
     def test_shell_syntax(self):
-        for name in ('t3-sync-update', 'ai-workbench-doctor'):
+        for name in ('t3-sync-update', 't3-desktop-update', 'ai-workbench-doctor'):
             subprocess.run(['bash', '-n', str(SKILL / 'assets' / name)], check=True)
 
 
