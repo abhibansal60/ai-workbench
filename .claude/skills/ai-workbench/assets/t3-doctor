@@ -24,7 +24,12 @@ ip=$(tailscale ip -4 2>/dev/null | head -1)
 
 # 1. Service
 if t3 service status 2>&1 | grep -qi "needs an update or repair"; then
-  if [ $fix = 1 ]; then t3 service install >/dev/null 2>&1 && fixed "service unit reinstalled"; else fail "service unit needs repair"; fi
+  if [ $fix = 1 ]; then
+    t3 service install >/dev/null 2>&1 \
+      && fixed "service unit reinstalled" || fail "service unit reinstall failed"
+  else
+    fail "service unit needs repair"
+  fi
 fi
 if curl -fsS -m 5 "http://$ip:$port/.well-known/t3/environment" >/dev/null 2>&1; then
   ok "service answers on $ip:$port"
