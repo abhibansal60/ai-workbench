@@ -14,7 +14,9 @@ if [ "$(readlink -f "$link" 2>/dev/null)" = "$dest" ]; then echo "desktop: alrea
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-gh release download "v$ver" -R pingdotgg/t3code -p "T3-Code-$ver-x86_64.AppImage" -D "$tmp"
+# Stable and preview releases name it T3-Code-<version>-x86_64.AppImage; nightly releases since
+# 20261113.4656 name it T3-Code-Nightly-x86_64.AppImage. Each release has one x86_64 AppImage.
+gh release download "v$ver" -R pingdotgg/t3code -p 'T3-Code-*-x86_64.AppImage' -D "$tmp"
 chmod +x "$tmp"/*.AppImage
 (cd "$tmp" && ./*.AppImage --appimage-extract >/dev/null)
 rm -rf "$dest" && mv "$tmp/squashfs-root" "$dest"

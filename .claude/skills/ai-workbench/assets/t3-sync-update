@@ -47,7 +47,9 @@ units=(); updated=()
 run_id="$(date +%s)-$$"
 for h in "${hosts[@]}"; do
   unit="t3-sync-update-$run_id-${#units[@]}.service"
-  if on_host "$h" "systemd-run --user --property=RemainAfterExit=yes --unit=$unit bash -c 't3 update -y >>\$HOME/.t3/sync-update.log 2>&1'" >/dev/null; then
+  # The unit gets the systemd user manager's PATH, not this shell's: after a reboot with no desktop
+  # login it lacks ~/.local/bin, and `t3` is not found (exit 127). So name the directory here.
+  if on_host "$h" "systemd-run --user --property=RemainAfterExit=yes --unit=$unit bash -c 'PATH=\$HOME/.local/bin:\$PATH t3 update -y >>\$HOME/.t3/sync-update.log 2>&1'" >/dev/null; then
     units+=("$unit")
   else
     echo "FAIL $h could not launch update"
